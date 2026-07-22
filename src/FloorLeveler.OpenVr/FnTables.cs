@@ -125,6 +125,9 @@ internal delegate void NoArgsDelegate();
 internal delegate bool GetPlayAreaSizeDelegate(ref float sizeX, ref float sizeZ);
 
 [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+internal delegate void SetPlayAreaSizeDelegate(float sizeX, float sizeZ);
+
+[UnmanagedFunctionPointer(CallingConvention.StdCall)]
 [return: MarshalAs(UnmanagedType.U1)]
 internal delegate bool GetMatrix34Delegate(ref HmdMatrix34 matrix);
 

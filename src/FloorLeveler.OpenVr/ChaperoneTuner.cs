@@ -13,6 +13,7 @@ public sealed class ChaperoneTuner
     private readonly CommitWorkingCopyDelegate _commit;
     private readonly NoArgsDelegate _revert;
     private readonly GetPlayAreaSizeDelegate _getWorkingPlayAreaSize;
+    private readonly SetPlayAreaSizeDelegate _setWorkingPlayAreaSize;
     private readonly GetCollisionBoundsCountDelegate _getWorkingBoundsCount;
     private readonly GetCollisionBoundsDelegate _getWorkingBounds;
     private readonly GetMatrix34Delegate _getWorkingSeated;
@@ -30,6 +31,7 @@ public sealed class ChaperoneTuner
         _commit = Marshal.GetDelegateForFunctionPointer<CommitWorkingCopyDelegate>(table.CommitWorkingCopy);
         _revert = Marshal.GetDelegateForFunctionPointer<NoArgsDelegate>(table.RevertWorkingCopy);
         _getWorkingPlayAreaSize = Marshal.GetDelegateForFunctionPointer<GetPlayAreaSizeDelegate>(table.GetWorkingPlayAreaSize);
+        _setWorkingPlayAreaSize = Marshal.GetDelegateForFunctionPointer<SetPlayAreaSizeDelegate>(table.SetWorkingPlayAreaSize);
         _getWorkingBoundsCount = Marshal.GetDelegateForFunctionPointer<GetCollisionBoundsCountDelegate>(table.GetWorkingCollisionBoundsInfo);
         _getWorkingBounds = Marshal.GetDelegateForFunctionPointer<GetCollisionBoundsDelegate>(table.GetWorkingCollisionBoundsInfo);
         _getWorkingSeated = Marshal.GetDelegateForFunctionPointer<GetMatrix34Delegate>(table.GetWorkingSeatedZeroPoseToRawTrackingPose);
@@ -113,6 +115,9 @@ public sealed class ChaperoneTuner
         float x = 0f, z = 0f;
         return _getWorkingPlayAreaSize(ref x, ref z) ? (x, z) : null;
     }
+
+    public void SetWorkingPlayAreaSize(float sizeX, float sizeZ)
+        => _setWorkingPlayAreaSize(sizeX, sizeZ);
 
     /// <summary>working copy を Live 設定へ反映する。false なら反映されていない。</summary>
     public bool Commit()

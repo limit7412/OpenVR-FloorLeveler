@@ -254,8 +254,13 @@ static string Format(Vector3 v) => $"({v.X:F3}, {v.Y:F3}, {v.Z:F3})";
 
 static float? ReadFloatOption(string[] args, string name)
 {
+    // NaN / Infinity は TryParse を通るが、無効な行列の commit につながるため拒否する。
     var i = Array.IndexOf(args, name);
-    return i >= 0 && i + 1 < args.Length && float.TryParse(args[i + 1], out var value) ? value : null;
+    return i >= 0 && i + 1 < args.Length
+        && float.TryParse(args[i + 1], out var value)
+        && float.IsFinite(value)
+        ? value
+        : null;
 }
 
 static string? ReadStringOption(string[] args, string name)
@@ -265,10 +270,12 @@ static string? ReadStringOption(string[] args, string name)
 }
 
 /// <summary>Chaperone 設定のスナップショット (仕様 F-6 の下地)。</summary>
+/// <param name="PlayAreaSize">プレイエリアの X/Z サイズ (メートル)。取得できなかった場合は null。</param>
 sealed record ChaperoneSnapshot(
     float[][] StandingToRaw,
     float[][] SeatedToRaw,
-    float[][][] BoundsQuads)
+    float[][][] BoundsQuads,
+    float[]? PlayAreaSize = null)
 {
     public static ChaperoneSnapshot Capture(ChaperoneTuner chaperone)
         => new(
@@ -279,23 +286,29 @@ sealed record ChaperoneSnapshot(
                 {
                     ToArray(q.Corner0), ToArray(q.Corner1), ToArray(q.Corner2), ToArray(q.Corner3),
                 })
-                .ToArray());
+                .ToArray(),
+            chaperone.GetWorkingPlayAreaSize() is var (x, z) ? [x, z] : null);
 
     public void Apply(ChaperoneTuner chaperone)
     {
         chaperone.SetWorkingStandingZeroPose(FromJagged(StandingToRaw));
         chaperone.SetWorkingSeatedZeroPose(FromJagged(SeatedToRaw));
-        if (BoundsQuads.Length > 0)
+
+        // 空 (境界未設定) も正当な状態として保存されているため、
+        // 0 件でも setter に渡して既存の境界をクリアする。
+        chaperone.SetWorkingCollisionBounds(BoundsQuads
+            .Select(q => new HmdQuad
+            {
+                Corner0 = ToVector(q[0]),
+                Corner1 = ToVector(q[1]),
+                Corner2 = ToVector(q[2]),
+                Corner3 = ToVector(q[3]),
+            })
+            .ToArray());
+
+        if (PlayAreaSize is [var sizeX, var sizeZ])
         {
-            chaperone.SetWorkingCollisionBounds(BoundsQuads
-                .Select(q => new HmdQuad
-                {
-                    Corner0 = ToVector(q[0]),
-                    Corner1 = ToVector(q[1]),
-                    Corner2 = ToVector(q[2]),
-                    Corner3 = ToVector(q[3]),
-                })
-                .ToArray());
+            chaperone.SetWorkingPlayAreaSize(sizeX, sizeZ);
         }
     }
 
