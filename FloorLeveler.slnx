@@ -1,10 +1,12 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/FloorLeveler.App/FloorLeveler.App.csproj" />
     <Project Path="src/FloorLeveler.Core/FloorLeveler.Core.csproj" />
     <Project Path="src/FloorLeveler.OpenVr/FloorLeveler.OpenVr.csproj" />
     <Project Path="src/FloorLeveler.Poc/FloorLeveler.Poc.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/FloorLeveler.App.Tests/FloorLeveler.App.Tests.csproj" />
     <Project Path="tests/FloorLeveler.Core.Tests/FloorLeveler.Core.Tests.csproj" />
     <Project Path="tests/FloorLeveler.OpenVr.Tests/FloorLeveler.OpenVr.Tests.csproj" />
   </Folder>
