@@ -34,6 +34,7 @@ public static class Ransac
 
         var random = new Random(seed);
         List<int>? bestInliers = null;
+        var bestResidualSq = double.PositiveInfinity;
 
         for (var i = 0; i < iterations; i++)
         {
@@ -48,18 +49,30 @@ public static class Ransac
             normal = Vector3.Normalize(normal);
 
             var inliers = new List<int>(points.Count);
+            double residualSq = 0;
             for (var j = 0; j < points.Count; j++)
             {
-                if (Math.Abs(Vector3.Dot(points[j] - p0, normal)) <= inlierThresholdMeters)
+                var distance = Math.Abs(Vector3.Dot(points[j] - p0, normal));
+                residualSq += (double)distance * distance;
+                if (distance <= inlierThresholdMeters)
                 {
                     inliers.Add(j);
                 }
             }
 
-            if (inliers.Count >= PlaneFit.MinimumPoints
-                && (bestInliers is null || inliers.Count > bestInliers.Count))
+            if (inliers.Count < PlaneFit.MinimumPoints)
+            {
+                continue;
+            }
+
+            // インライア数が最大の仮説を選ぶ。同数の場合は全点の残差二乗和が
+            // 小さい方を採用する (外れ値を含む仮説が先着順で残るのを防ぐ)。
+            if (bestInliers is null
+                || inliers.Count > bestInliers.Count
+                || (inliers.Count == bestInliers.Count && residualSq < bestResidualSq))
             {
                 bestInliers = inliers;
+                bestResidualSq = residualSq;
             }
         }
 

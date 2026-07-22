@@ -67,6 +67,31 @@ public class RansacTests
         Assert.Equal(a.Fit.Normal, b.Fit.Normal);
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(20260722)]
+    public void Run_TieOnInlierCount_PrefersLowerResidual(int seed)
+    {
+        // 床点 3 点 (1 点は微小ノイズ) + 持ち上げ外れ値 1 点。
+        // 床平面と外れ値入り平面はともにインライア数 3 で同点になるが、
+        // 全点の残差二乗和が小さい床平面がシード順によらず選ばれること。
+        var points = new List<Vector3>
+        {
+            new(0f, 0f, 0f),
+            new(1f, 0f, 0f),
+            new(0f, 0.001f, 1f),
+            new(0.5f, 0.05f, 0.5f), // 外れ値
+        };
+
+        var result = Ransac.Run(points, seed: seed);
+
+        Assert.Equal(1, result.OutlierCount);
+        Assert.DoesNotContain(3, result.InlierIndices);
+        Assert.True(result.Fit.TiltAngleDegrees < 1f);
+    }
+
     [Fact]
     public void Run_TooFewPoints_Throws()
     {
