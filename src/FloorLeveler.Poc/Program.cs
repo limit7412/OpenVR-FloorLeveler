@@ -212,12 +212,18 @@ static int Restore(string[] args)
             }
 
             Console.WriteLine("スナップショットを Live 設定へ復元しました。");
-        }
-        else
-        {
-            Console.WriteLine("working copy へ復元しました (--commit で Live に反映)。");
+            return 0;
         }
 
+        // --commit なしは他コマンドと同様プレビューのみで、未コミットの復元内容を
+        // working copy に残さない。
+        chaperone.ShowWorkingSetPreview();
+        Console.WriteLine("working copy へ復元しプレビューを表示中です (--commit で Live に反映)。");
+        Console.Write("Enter で revert して終了します...");
+        Console.ReadLine();
+        chaperone.HideWorkingSetPreview();
+        chaperone.Revert();
+        Console.WriteLine("revert しました。");
         return 0;
     }
     catch

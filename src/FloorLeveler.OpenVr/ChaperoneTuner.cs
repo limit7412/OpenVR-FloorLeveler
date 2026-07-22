@@ -78,11 +78,18 @@ public sealed class ChaperoneTuner
         _setWorkingSeated(ref m);
     }
 
-    /// <summary>working copy のコリジョン境界の全頂点 (壁 quad の配列) を取得する。</summary>
+    /// <summary>
+    /// working copy のコリジョン境界の全頂点 (壁 quad の配列) を取得する。
+    /// 境界が設定されていない場合は空配列。取得に失敗した場合は
+    /// <see cref="OpenVrException"/> を送出する (空境界と区別し、呼び出し側で revert させるため)。
+    /// </summary>
     public HmdQuad[] GetWorkingCollisionBounds()
     {
+        // 件数の問い合わせ (バッファ null)。OpenVR の規約上この呼び出しは false を
+        // 返すため、戻り値ではなく count で判定する。
         var count = 0u;
-        if (!_getWorkingBoundsCount(IntPtr.Zero, ref count) || count == 0)
+        _getWorkingBoundsCount(IntPtr.Zero, ref count);
+        if (count == 0)
         {
             return [];
         }
@@ -90,7 +97,9 @@ public sealed class ChaperoneTuner
         var quads = new HmdQuad[count];
         if (!_getWorkingBounds(quads, ref count))
         {
-            throw new OpenVrException("GetWorkingCollisionBoundsInfo が失敗しました。");
+            throw new OpenVrException(
+                $"GetWorkingCollisionBoundsInfo が失敗しました (期待 quad 数: {count})。" +
+                "境界を変換できないため補正を中止します。");
         }
 
         return quads;
