@@ -90,7 +90,8 @@ static int Tilt(string[] args)
         Vector3.UnitZ,
         0f,
         IsNegligible: false,
-        RequiresConfirmation: false);
+        // 大きい回転は Core と同じ閾値 (10° 超) で確認を要求する。
+        RequiresConfirmation: Math.Abs(roll.Value) > Correction.ConfirmationRotationDegrees);
 
     return ApplyAndMaybeCommit(correction, args.Contains("--commit"));
 }
