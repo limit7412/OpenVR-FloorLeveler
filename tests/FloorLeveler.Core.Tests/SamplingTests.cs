@@ -50,6 +50,33 @@ public class SamplingTests
     }
 
     [Fact]
+    public void IsStill_SparseHistoryWithGapMovement_ReturnsFalse()
+    {
+        // 窓内に最新以外の観測が無く、窓の外の直近サンプルから大きく移動している場合。
+        // 観測欠落中の移動を静止と誤判定してはならない。
+        var history = new[]
+        {
+            At(0.0, 5f, 0f, 5f),
+            At(1.0, 1f, 0f, 1f),
+        };
+
+        Assert.False(Sampling.IsStill(history));
+    }
+
+    [Fact]
+    public void IsStill_SparseHistoryButStationary_ReturnsTrue()
+    {
+        // 観測が疎でも、窓の外の直近サンプルから移動していなければ静止扱いできる。
+        var history = new[]
+        {
+            At(0.0, 1f, 0f, 1f),
+            At(1.0, 1.001f, 0f, 1f),
+        };
+
+        Assert.True(Sampling.IsStill(history));
+    }
+
+    [Fact]
     public void IsStill_MovementOutsideWindow_IsIgnored()
     {
         // 0.6 秒前の大きな移動は窓の外なので無視される。

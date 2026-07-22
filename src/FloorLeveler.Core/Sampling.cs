@@ -26,6 +26,8 @@ public static class Sampling
     /// <summary>
     /// 静止判定 (仕様 F-1 静置方式): 最新サンプル時刻から window 遡った区間の全サンプルが
     /// 半径 tolerance 内に収まっているかを調べる。区間全体を覆う観測が無い場合は false。
+    /// 窓の開始時刻以前の直近サンプルも移動量の評価に含めるため、窓内の観測が
+    /// 疎 (欠落) な場合はその間の移動が保守的に検出される。
     /// </summary>
     public static bool IsStill(
         IReadOnlyList<TimedSample> history,
@@ -49,17 +51,12 @@ public static class Sampling
         for (var i = history.Count - 2; i >= 0; i--)
         {
             var sample = history[i];
-            if (sample.Timestamp < windowStart)
+            min = Vector3.Min(min, sample.Position);
+            max = Vector3.Max(max, sample.Position);
+            if (sample.Timestamp <= windowStart)
             {
                 coversWindow = true; // 窓の外側まで観測が続いている
                 break;
-            }
-
-            min = Vector3.Min(min, sample.Position);
-            max = Vector3.Max(max, sample.Position);
-            if (sample.Timestamp == windowStart)
-            {
-                coversWindow = true;
             }
         }
 
