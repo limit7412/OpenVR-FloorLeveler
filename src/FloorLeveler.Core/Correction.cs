@@ -109,8 +109,11 @@ public static class Correction
         var (axis, angleRadians) = ToAxisAngle(map.Rotation);
         var angleDegrees = angleRadians * (180f / MathF.PI);
 
+        // 並進の微小判定は高さ変化ではなく写像全体の並進成分で行う。
+        // 回転中心が standing 原点から離れている場合、微小回転でも
+        // 回転中心補正により並進が閾値を超えることがある。
         var isNegligible = angleDegrees < NegligibleRotationDegrees
-            && Math.Abs(heightChange) < NegligibleTranslationMeters;
+            && map.Translation.Length() < NegligibleTranslationMeters;
         var requiresConfirmation = angleDegrees > ConfirmationRotationDegrees;
 
         return new CorrectionResult(mode, map, angleDegrees, axis, heightChange, isNegligible, requiresConfirmation);

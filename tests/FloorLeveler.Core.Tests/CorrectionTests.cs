@@ -93,6 +93,31 @@ public class CorrectionTests
     }
 
     [Fact]
+    public void FloorAlign_TinyRotationFarFromOrigin_IsNotNegligible()
+    {
+        // 重心が standing 原点から 2m 離れていると、0.05° 未満の回転でも
+        // 回転中心補正により原点付近は 1 mm を超えて動く。補正不要と判定してはならない。
+        var center = new Vector3(2f, 0f, 0f);
+        var rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 0.04f * MathF.PI / 180f);
+        var tilt = RigidTransform.CreateRotationAboutPoint(rotation, center);
+
+        var points = new List<Vector3>();
+        for (var ix = -2; ix <= 2; ix++)
+        {
+            for (var iz = -2; iz <= 2; iz++)
+            {
+                points.Add(tilt.TransformPoint(center + new Vector3(ix * 0.4f, 0f, iz * 0.4f)));
+            }
+        }
+
+        var correction = Correction.ComputeFloorAlign(PlaneFit.Fit(points));
+
+        Assert.True(correction.RotationAngleDegrees < Correction.NegligibleRotationDegrees);
+        Assert.True(correction.StandingSpaceMap.Translation.Length() > Correction.NegligibleTranslationMeters);
+        Assert.False(correction.IsNegligible);
+    }
+
+    [Fact]
     public void FloorAlign_LargeTilt_RequiresConfirmation()
     {
         var points = MakeTiltedFloor(12f, 0f, Vector3.UnitZ);

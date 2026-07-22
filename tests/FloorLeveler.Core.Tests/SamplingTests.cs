@@ -143,6 +143,20 @@ public class SamplingTests
     }
 
     [Fact]
+    public void HorizontalSpread_Triangle_ReturnsMinAreaRectShortSide()
+    {
+        // 三角形 (0,0), (4,0), (3,1): 最小面積の外接矩形は底辺に沿った 4 x 1 で、短辺は 1。
+        var points = new[]
+        {
+            new Vector3(0f, 0f, 0f),
+            new Vector3(4f, 0f, 0f),
+            new Vector3(3f, 0f, 1f),
+        };
+
+        Assert.Equal(1f, Sampling.HorizontalSpread(points), 4);
+    }
+
+    [Fact]
     public void HorizontalSpread_HeightDoesNotCount()
     {
         // Y 方向の広がりは水平の広がりに寄与しない。

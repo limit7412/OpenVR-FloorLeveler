@@ -88,9 +88,9 @@ public static class Sampling
     }
 
     /// <summary>
-    /// 点群の水平方向の広がり (仕様 F-1): XZ 平面へ射影した点群の凸包に対する
-    /// 回転キャリパー幅 (最小外接矩形の短辺に相当) をメートルで返す。
-    /// 点が 2 点未満、または全点がほぼ一致する場合は 0。
+    /// 点群の水平方向の広がり (仕様 F-1): XZ 平面へ射影した点群の
+    /// 最小外接矩形 (面積最小) の短辺をメートルで返す。
+    /// 点が 2 点未満、または全点が一直線上にある場合は 0。
     /// </summary>
     public static float HorizontalSpread(IReadOnlyList<Vector3> points)
     {
@@ -120,8 +120,10 @@ public static class Sampling
             return 0f; // 一直線上: 幅は 0
         }
 
-        // 各辺に沿った方向を基準に、垂直方向の広がりの最小値を取る (回転キャリパー幅)。
-        var width = float.MaxValue;
+        // 最小面積の外接矩形は凸包のいずれかの辺と平行になるため、
+        // 各辺に沿った矩形の面積を比較し、最小のものの短辺を返す。
+        var bestArea = float.MaxValue;
+        var shortSide = 0f;
         for (var i = 0; i < hull.Count; i++)
         {
             var edge = hull[(i + 1) % hull.Count] - hull[i];
@@ -131,19 +133,31 @@ public static class Sampling
                 continue;
             }
 
-            var normal = new Vector2(-edge.Y, edge.X) / len;
-            float min = float.MaxValue, max = float.MinValue;
+            var dir = edge / len;
+            var normal = new Vector2(-dir.Y, dir.X);
+            float minAlong = float.MaxValue, maxAlong = float.MinValue;
+            float minPerp = float.MaxValue, maxPerp = float.MinValue;
             foreach (var p in hull)
             {
+                var a = Vector2.Dot(p, dir);
                 var d = Vector2.Dot(p, normal);
-                min = Math.Min(min, d);
-                max = Math.Max(max, d);
+                minAlong = Math.Min(minAlong, a);
+                maxAlong = Math.Max(maxAlong, a);
+                minPerp = Math.Min(minPerp, d);
+                maxPerp = Math.Max(maxPerp, d);
             }
 
-            width = Math.Min(width, max - min);
+            var along = maxAlong - minAlong;
+            var perp = maxPerp - minPerp;
+            var area = along * perp;
+            if (area < bestArea)
+            {
+                bestArea = area;
+                shortSide = Math.Min(along, perp);
+            }
         }
 
-        return width == float.MaxValue ? 0f : width;
+        return shortSide;
     }
 
     /// <summary>点群がフィットに十分か (点数と広がり) を評価する (仕様 F-1)。</summary>
