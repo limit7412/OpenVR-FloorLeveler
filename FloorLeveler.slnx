@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FloorLeveler.Core/FloorLeveler.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FloorLeveler.Core.Tests/FloorLeveler.Core.Tests.csproj" />
+  </Folder>
+</Solution>
