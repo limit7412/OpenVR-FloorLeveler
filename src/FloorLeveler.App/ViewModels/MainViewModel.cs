@@ -349,7 +349,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// </summary>
     public void PollSample()
     {
-        if (_gateway is null || _sampler is null || SelectedDevice is null || _samplingMode == SamplingMode.Manual)
+        // プレビュー中は自動記録しない (記録→再計算で未確定プレビューが破棄されるのを防ぐ)。
+        if (_gateway is null || _sampler is null || SelectedDevice is null
+            || _samplingMode == SamplingMode.Manual || IsPreviewing)
         {
             return;
         }
@@ -357,7 +359,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         var pose = _gateway.GetDevicePose(SelectedDevice.Index);
         if (pose is null)
         {
-            return; // トラッキングロスト中は静かにスキップ
+            // トラッキングロスト中は連続性を切り、復帰後の誤記録を防ぐ。
+            _sampler.BreakContinuity();
+            return;
         }
 
         var timestamp = new TimeSpan(_clock().Ticks);
@@ -541,6 +545,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 _points[i] = correction.StandingSpaceMap.TransformPoint(_points[i]);
             }
 
+            // standing 座標系が変わったため、旧座標の履歴を持つサンプラーを初期化する。
+            _sampler?.Reset();
             Recompute();
             StatusMessage = "補正を適用しました。";
             UndoCommand.RaiseCanExecuteChanged();
@@ -593,6 +599,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 _points[i] = inverseMap.TransformPoint(_points[i]);
             }
 
+            _sampler?.Reset();
             Recompute();
             StatusMessage = "直前の補正を元に戻しました。";
             UndoCommand.RaiseCanExecuteChanged();
@@ -673,6 +680,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             // (Apply/Undo と異なり復元前後の姿勢を関係づける単一の変換が無いため、
             // 点群は写像ではなくクリアする)。
             _points.Clear();
+            _sampler?.Reset(); // 復元で standing 座標系が変わったためサンプラーも初期化
             _lastApplied = null;
             _log?.Log($"バックアップを復元: {entry.Path}" + (skipped > 0 ? $" ({skipped} 件をスキップ)" : string.Empty));
             Recompute();

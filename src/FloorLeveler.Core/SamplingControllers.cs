@@ -10,6 +10,13 @@ public interface IPoseSampler
 
     /// <summary>状態を初期化する。</summary>
     void Reset();
+
+    /// <summary>
+    /// 時間的連続性を切る (トラッキングロストなどで観測が途切れた場合)。
+    /// 次の有効フレームは基準の再確立のみに使い、欠落をまたいだ速度計算や
+    /// 静止判定で誤記録しないようにする。記録済みの点は保持する。
+    /// </summary>
+    void BreakContinuity();
 }
 
 /// <summary>
@@ -85,6 +92,12 @@ public sealed class StillnessSampler : IPoseSampler
         _armed = true;
         _lastEmitted = null;
     }
+
+    /// <summary>
+    /// 観測が途切れた場合に履歴を破棄する。欠落をまたいだ古いサンプルで静止判定を
+    /// 誤らないようにする (記録済み位置の離脱判定は維持する)。
+    /// </summary>
+    public void BreakContinuity() => _history.Clear();
 }
 
 /// <summary>
@@ -99,6 +112,7 @@ public sealed class ContinuousSampler : IPoseSampler
 
     private TimedSample? _previous;
     private Vector3? _lastRecorded;
+    private bool _warmup;
 
     /// <param name="profile">接地オフセットのプロファイル。</param>
     /// <param name="maxSpeedMetersPerSecond">これを超える速度のフレームは棄却 (既定 1.0 m/s)。</param>
@@ -121,6 +135,15 @@ public sealed class ContinuousSampler : IPoseSampler
     {
         var contact = _profile.ContactPoint(devicePose);
         var current = new TimedSample(timestamp, contact);
+
+        // 観測が途切れた直後の 1 フレームは基準の再確立のみに使い記録しない。
+        // 欠落をまたいだ大きな dt で速度を過小評価し、高速移動を記録するのを防ぐ。
+        if (_warmup)
+        {
+            _warmup = false;
+            _previous = current;
+            return null;
+        }
 
         // 速度超過 (持ち上げ等) のフレームは棄却する。基準を更新して次に備える。
         if (_previous is { } prev && Sampling.ExceedsSpeed(prev, current, _maxSpeed))
@@ -145,5 +168,16 @@ public sealed class ContinuousSampler : IPoseSampler
     {
         _previous = null;
         _lastRecorded = null;
+        _warmup = false;
+    }
+
+    /// <summary>
+    /// 観測が途切れた場合に速度の連続性を切り、次の有効フレームをウォームアップ
+    /// (基準確立のみ) にする。記録済み位置は維持し、欠落中の移動を記録しない。
+    /// </summary>
+    public void BreakContinuity()
+    {
+        _previous = null;
+        _warmup = true;
     }
 }

@@ -118,6 +118,84 @@ public class MainViewModelSamplingTests : IDisposable
         Assert.Equal(1, vm.PointCount);
     }
 
+    [Fact]
+    public void Previewing_SuspendsAutoSampling()
+    {
+        // 2° 傾いた standing にして補正を適用可能にし、プレビュー中に自動記録が
+        // 走らない (プレビューが破棄されない) ことを確認する。
+        var gateway = new FakeSessionGateway(
+            new RigidTransform(Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 2f * MathF.PI / 180f), new Vector3(0f, 1f, 0f)));
+        var vm = Connected(gateway);
+        vm.SamplingMode = SamplingMode.Stillness;
+        gateway.PoseForAnyDevice = RigidTransform.CreateTranslation(new Vector3(1f, 0f, 1f));
+
+        vm.PreviewCommand.Execute(null);
+        Assert.True(vm.IsPreviewing);
+
+        for (var i = 0; i < 30; i++)
+        {
+            vm.PollSample();
+        }
+
+        Assert.True(vm.IsPreviewing);      // プレビューが維持されている
+        Assert.True(gateway.PreviewVisible);
+        Assert.Equal(0, vm.PointCount);    // 自動記録されていない
+    }
+
+    [Fact]
+    public void Apply_ResetsSampler()
+    {
+        // モード A で 2° 傾き。静止で 1 点自動記録 → 適用 → 座標系が変わりサンプラーが
+        // リセットされるため、同じ静止姿勢で再び記録できる。
+        var gateway = new FakeSessionGateway(
+            new RigidTransform(Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 2f * MathF.PI / 180f), new Vector3(0f, 1f, 0f)));
+        var vm = Connected(gateway);
+        vm.SamplingMode = SamplingMode.Stillness;
+        gateway.PoseForAnyDevice = RigidTransform.CreateTranslation(new Vector3(1f, 0f, 1f));
+
+        for (var i = 0; i < 20; i++)
+        {
+            vm.PollSample();
+        }
+
+        Assert.Equal(1, vm.PointCount);
+
+        vm.ApplyCommand.Execute(null); // モード A は点群不要で適用可能
+
+        // 適用後もサンプル点は保持される (新座標へ写される) が、サンプラーは
+        // リセットされているので、同じ静止姿勢で追加記録できる。
+        var before = vm.PointCount;
+        for (var i = 0; i < 20; i++)
+        {
+            vm.PollSample();
+        }
+
+        Assert.True(vm.PointCount > before);
+    }
+
+    [Fact]
+    public void LostTracking_BreaksContinuity()
+    {
+        // 連続方式で、トラッキングロスト (null ポーズ) を挟んで遠くへワープしても、
+        // 復帰直後のフレームは記録されない (ウォームアップ)。
+        var gateway = new FakeSessionGateway(RigidTransform.Identity);
+        var vm = Connected(gateway);
+        vm.SamplingMode = SamplingMode.Continuous;
+
+        gateway.PoseForAnyDevice = RigidTransform.CreateTranslation(new Vector3(0f, 0f, 0f));
+        vm.PollSample(); // 1 点目
+        var afterFirst = vm.PointCount;
+
+        gateway.PoseForAnyDevice = null; // トラッキングロスト
+        vm.PollSample();
+
+        // 復帰後、遠くへワープ (欠落をまたぐ) → ウォームアップで記録されない。
+        gateway.PoseForAnyDevice = RigidTransform.CreateTranslation(new Vector3(3f, 0f, 3f));
+        vm.PollSample();
+
+        Assert.Equal(afterFirst, vm.PointCount);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_dir))

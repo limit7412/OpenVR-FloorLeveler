@@ -159,6 +159,25 @@ public class ContinuousSamplerTests
     }
 
     [Fact]
+    public void BreakContinuity_ThenFastMove_DoesNotRecordAcrossGap()
+    {
+        var sampler = new ContinuousSampler(Zero, maxSpeedMetersPerSecond: 1.0f, minSpacingMeters: 0.01f);
+
+        sampler.Feed(TimeSpan.FromSeconds(0.0), At(new Vector3(0f, 0f, 0f)));
+        // トラッキングロストで連続性が切れる。
+        sampler.BreakContinuity();
+
+        // 復帰後、欠落をまたいで遠くへ移動 (時間差が大きく速度は小さく見える)。
+        var warm = sampler.Feed(TimeSpan.FromSeconds(5.0), At(new Vector3(2f, 0f, 0f)));
+        // ウォームアップフレームは記録しない (欠落中の高速移動を外れ点にしない)。
+        Assert.Null(warm);
+
+        // 次のフレームからは通常の速度判定に戻る。0.1s で 2cm = 0.2 m/s → 記録。
+        var next = sampler.Feed(TimeSpan.FromSeconds(5.1), At(new Vector3(2.02f, 0f, 0f)));
+        Assert.NotNull(next);
+    }
+
+    [Fact]
     public void Feed_ResumesRecordingAfterFastMotion()
     {
         var sampler = new ContinuousSampler(Zero, maxSpeedMetersPerSecond: 1.0f, minSpacingMeters: 0.01f);
