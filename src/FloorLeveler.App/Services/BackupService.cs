@@ -192,11 +192,15 @@ public sealed class BackupService
         }
     }
 
-    /// <summary>並び順キー: 種別を除いた {yyyyMMdd}-{HHmmss}-{seq} (固定幅で辞書順=時系列順)。</summary>
+    /// <summary>
+    /// 並び順キー: 保存順を表す連番 seq (固定幅ゼロ埋め)。壁時計 (timestamp) は
+    /// DST のフォールバックや手動時刻修正で逆行し得るため順序の基準にしない。
+    /// seq は保存横断で単調増加 (再起動後も ReadMaxSequence で継続) する。
+    /// </summary>
     private static string OrderKey(string path)
     {
         var parts = Path.GetFileNameWithoutExtension(path).Split('-');
-        return parts.Length >= 3 ? $"{parts[0]}-{parts[1]}-{parts[2]}" : Path.GetFileName(path);
+        return parts.Length >= 3 ? parts[2] : Path.GetFileName(path);
     }
 
     private static DateTime SafeLastWriteUtc(string path)

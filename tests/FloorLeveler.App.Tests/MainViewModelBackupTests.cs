@@ -196,6 +196,24 @@ public class MainViewModelBackupTests : IDisposable
     }
 
     [Fact]
+    public void RestoreLatest_SkipsCandidateWhoseCommitFails()
+    {
+        // 最新候補の commit が OpenVR に拒否された場合も、次の有効な候補へ進む。
+        var gateway = new FakeSessionGateway(TiltedStanding(2f));
+        var vm = Connected(gateway, out _);
+        vm.BackupCommand.Execute(null); // 手動退避 #1
+        vm.BackupCommand.Execute(null); // 手動退避 #2 (より新しい)
+        gateway.CommitFailCount = 1; // 最新候補の commit のみ失敗させる
+
+        vm.RestoreLatestCommand.Execute(null);
+
+        // 2 回 commit を試み (1 回目失敗・2 回目成功)、復元に成功する。
+        Assert.Equal(2, gateway.CommitCount);
+        Assert.Contains("復元しました", vm.StatusMessage);
+        Assert.Contains("スキップ", vm.StatusMessage);
+    }
+
+    [Fact]
     public void RestoreLatest_AllCandidatesCorrupt_ReportsFailure()
     {
         var gateway = new FakeSessionGateway(TiltedStanding(2f));
@@ -207,7 +225,7 @@ public class MainViewModelBackupTests : IDisposable
         vm.RestoreLatestCommand.Execute(null);
 
         Assert.Equal(0, gateway.CommitCount);
-        Assert.Contains("すべて読み込みに失敗", vm.StatusMessage);
+        Assert.Contains("すべて復元に失敗", vm.StatusMessage);
     }
 
     [Fact]

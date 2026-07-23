@@ -553,10 +553,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        // 新しい順に試し、破損した候補 (保存中断・不完全コピー・手動編集による
-        // 形状不正など) は飛ばして次の有効な候補へ進む。読み込みだけでなく
-        // working copy への書き戻し (形状検証を含む) までを候補ごとに試すことで、
-        // 構文上は有効だが復元できないファイルもスキップする。
+        // 新しい順に試し、復元できない候補 (保存中断・不完全コピー・手動編集による
+        // 形状不正、または OpenVR が Live 反映を拒否する値) は飛ばして次の有効な
+        // 候補へ進む。読み込み・形状検証・working copy への書き戻し・commit までを
+        // 候補ごとに試し、いずれで失敗しても revert して次の候補へ。
         var skipped = 0;
         foreach (var entry in candidates)
         {
@@ -575,9 +575,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
             if (!_gateway.Commit())
             {
+                // Live 反映が拒否された場合も候補固有の失敗として扱い、次候補を試す。
                 _gateway.Revert();
-                StatusMessage = "復元に失敗したため元に戻しました。";
-                return;
+                skipped++;
+                continue;
             }
 
             // 復元により standing 座標系が不連続に変わるため、旧座標系で記録した
@@ -586,16 +587,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             // 点群は写像ではなくクリアする)。
             _points.Clear();
             _lastApplied = null;
-            _log?.Log($"バックアップを復元: {entry.Path}" + (skipped > 0 ? $" ({skipped} 件の破損をスキップ)" : string.Empty));
+            _log?.Log($"バックアップを復元: {entry.Path}" + (skipped > 0 ? $" ({skipped} 件をスキップ)" : string.Empty));
             Recompute();
             StatusMessage = skipped > 0
-                ? $"バックアップを復元しました: {entry.Timestamp} ({skipped} 件の破損をスキップ)"
+                ? $"バックアップを復元しました: {entry.Timestamp} ({skipped} 件をスキップ)"
                 : $"バックアップを復元しました: {entry.Timestamp}";
             UndoCommand.RaiseCanExecuteChanged();
             return;
         }
 
-        StatusMessage = "有効なバックアップがありませんでした (すべて読み込みに失敗)。";
+        StatusMessage = "有効なバックアップがありませんでした (すべて復元に失敗)。";
     }
 
     private void TryRevert()

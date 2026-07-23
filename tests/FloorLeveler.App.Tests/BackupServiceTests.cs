@@ -82,6 +82,21 @@ public class BackupServiceTests : IDisposable
     }
 
     [Fact]
+    public void LatestRestorable_ClockWentBackwards_UsesSaveOrder()
+    {
+        // DST フォールバックや手動時刻修正で 2 回目の保存が早い時刻になっても、
+        // 保存順 (seq) が一次キーのため後から保存した方が最新になる。
+        var service = new BackupService(_dir);
+        service.Save(Sample(0.01f), new DateTime(2026, 7, 23, 2, 0, 0), BackupKind.Manual);
+        service.Save(Sample(0.02f), new DateTime(2026, 7, 23, 1, 0, 0), BackupKind.Manual);
+
+        var latest = service.LatestRestorable();
+
+        // 後から保存した (時刻は早い 01:00:00 の) ファイルが最新。
+        Assert.Equal("20260723-010000", latest!.Timestamp);
+    }
+
+    [Fact]
     public void Save_TwoInstances_SameSecond_KeepSaveOrder()
     {
         // 2 インスタンスが同じディレクトリを共有し同一秒に別種別を保存しても、
