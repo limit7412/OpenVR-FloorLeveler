@@ -120,11 +120,13 @@ public sealed class BackupService
                 return [];
             }
 
-            // 並び順は種別を除いた (timestamp, seq) で決める。種別を含めると
-            // 同秒同 seq (万一発生した場合) に種別の文字列順で並んでしまうため。
-            // 別プロセスとの競合で同 seq が万一発生した場合の tie-break は
-            // 実際の書き込み時刻で行い、種別の文字列順に依存しない。
+            // 本サービスが保存した新形式 ({stamp}-{seq}-{kind}) のみを対象とする。
+            // 同じディレクトリを共有する M0 PoC の旧形式 (yyyyMMdd-HHmmss.json) や
+            // 無関係なファイルを最新扱いしないため。
+            // 並び順は種別を除いた seq で決める。別プロセス競合で同 seq が万一
+            // 発生した場合の tie-break は実際の書き込み時刻で行う。
             return Directory.EnumerateFiles(_directory, "*.json")
+                .Where(IsRecognizedFormat)
                 .OrderByDescending(OrderKey, StringComparer.Ordinal)
                 .ThenByDescending(SafeLastWriteUtc)
                 .Select(ToEntry)
@@ -190,6 +192,19 @@ public sealed class BackupService
         {
             // 後始末の失敗は握りつぶす。
         }
+    }
+
+    /// <summary>
+    /// 本サービスが保存した新形式か: {yyyyMMdd}-{HHmmss}-{seq(9桁)}-{kind}。
+    /// seq が数字・kind が既知の種別であることを確認する。
+    /// </summary>
+    private static bool IsRecognizedFormat(string path)
+    {
+        var parts = Path.GetFileNameWithoutExtension(path).Split('-');
+        return parts.Length == 4
+            && parts[2].Length > 0
+            && parts[2].All(char.IsDigit)
+            && parts[3] is "auto" or "preapply" or "manual";
     }
 
     /// <summary>

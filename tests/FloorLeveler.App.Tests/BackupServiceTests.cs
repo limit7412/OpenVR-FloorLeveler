@@ -46,6 +46,24 @@ public class BackupServiceTests : IDisposable
     }
 
     [Fact]
+    public void List_IgnoresLegacyAndUnknownFiles()
+    {
+        // M0 PoC の旧形式 (yyyyMMdd-HHmmss.json) や無関係なファイルは無視され、
+        // 新形式の保存が復元候補の最新になる。
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(Path.Combine(_dir, "20260723-090000.json"), "{}"); // 旧 PoC 形式
+        File.WriteAllText(Path.Combine(_dir, "notes.json"), "{}"); // 無関係
+        var service = new BackupService(_dir);
+        service.Save(Sample(0.02f), new DateTime(2026, 7, 23, 1, 0, 0), BackupKind.Manual);
+
+        var list = service.List();
+
+        Assert.Single(list);
+        Assert.Equal(BackupKind.Manual, list[0].Kind);
+        Assert.Equal(BackupKind.Manual, service.LatestRestorable()!.Kind);
+    }
+
+    [Fact]
     public void List_EmptyDirectory_ReturnsEmpty()
     {
         var service = new BackupService(_dir);
