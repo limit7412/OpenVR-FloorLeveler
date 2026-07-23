@@ -56,4 +56,53 @@ public class ChaperoneSnapshotTests
     {
         Assert.Throws<ArgumentException>(() => ChaperoneSnapshot.FromRows([[1f, 2f, 3f]]));
     }
+
+    [Fact]
+    public void Validate_WellFormed_DoesNotThrow()
+    {
+        var quad = new[]
+        {
+            new Vector3(1f, 0f, 1f), new Vector3(1f, 2f, 1f),
+            new Vector3(-1f, 2f, 1f), new Vector3(-1f, 0f, 1f),
+        };
+        var snapshot = ChaperoneSnapshot.Create(RigidTransform.Identity, RigidTransform.Identity, [quad], (2f, 3f));
+
+        snapshot.Validate(); // 例外なし
+    }
+
+    [Fact]
+    public void Validate_BadStandingShape_Throws()
+    {
+        var snapshot = new ChaperoneSnapshot(
+            [[1f, 0f, 0f], [0f, 1f, 0f], [0f, 0f, 1f]], // 3 列しかない
+            ChaperoneSnapshot.ToRows(RigidTransform.Identity),
+            [],
+            null);
+
+        Assert.Throws<ArgumentException>(snapshot.Validate);
+    }
+
+    [Fact]
+    public void Validate_BadPlayAreaSize_Throws()
+    {
+        var snapshot = new ChaperoneSnapshot(
+            ChaperoneSnapshot.ToRows(RigidTransform.Identity),
+            ChaperoneSnapshot.ToRows(RigidTransform.Identity),
+            [],
+            [1f]); // 2 要素でない
+
+        Assert.Throws<ArgumentException>(snapshot.Validate);
+    }
+
+    [Fact]
+    public void Validate_BadBoundsQuad_Throws()
+    {
+        var snapshot = new ChaperoneSnapshot(
+            ChaperoneSnapshot.ToRows(RigidTransform.Identity),
+            ChaperoneSnapshot.ToRows(RigidTransform.Identity),
+            [[[1f, 2f, 3f]]], // 頂点が 4 つない
+            null);
+
+        Assert.Throws<ArgumentException>(snapshot.Validate);
+    }
 }

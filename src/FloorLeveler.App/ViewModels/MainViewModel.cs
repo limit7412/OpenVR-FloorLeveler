@@ -563,7 +563,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             try
             {
                 var snapshot = _backupService.Load(entry.Path);
-                _gateway.RestoreSnapshot(snapshot); // 形状不正はここで例外
+                snapshot.Validate(); // 形状不正 (行列・境界・プレイエリア) はここで例外
+                _gateway.RestoreSnapshot(snapshot);
             }
             catch
             {

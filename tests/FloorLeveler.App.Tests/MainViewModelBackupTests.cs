@@ -175,6 +175,27 @@ public class MainViewModelBackupTests : IDisposable
     }
 
     [Fact]
+    public void RestoreLatest_SkipsInvalidPlayAreaSize()
+    {
+        // JSON も行列も有効だが PlayAreaSize が壊れている ([1]) ファイルは
+        // Validate で例外になり、スキップして有効な候補へ復元する。
+        var gateway = new FakeSessionGateway(TiltedStanding(2f));
+        var vm = Connected(gateway, out _);
+        vm.BackupCommand.Execute(null); // 有効な手動退避
+
+        File.WriteAllText(
+            Path.Combine(_dir, "20260723-070000-999999999-manual.json"),
+            "{\"StandingToRaw\":[[1,0,0,0],[0,1,0,0],[0,0,1,0]]," +
+            "\"SeatedToRaw\":[[1,0,0,0],[0,1,0,0],[0,0,1,0]]," +
+            "\"BoundsQuads\":[],\"PlayAreaSize\":[1]}");
+
+        vm.RestoreLatestCommand.Execute(null);
+
+        Assert.True(gateway.CommitCount >= 1);
+        Assert.Contains("スキップ", vm.StatusMessage);
+    }
+
+    [Fact]
     public void RestoreLatest_AllCandidatesCorrupt_ReportsFailure()
     {
         var gateway = new FakeSessionGateway(TiltedStanding(2f));

@@ -40,6 +40,10 @@ public static class ChaperoneSnapshotIo
         ArgumentNullException.ThrowIfNull(chaperone);
         ArgumentNullException.ThrowIfNull(snapshot);
 
+        // 形状不正なスナップショットを working copy へ部分的に書き込まないよう、
+        // 書き込み前に検証する。
+        snapshot.Validate();
+
         chaperone.SetWorkingStandingZeroPose(snapshot.Standing());
         chaperone.SetWorkingSeatedZeroPose(snapshot.Seated());
 

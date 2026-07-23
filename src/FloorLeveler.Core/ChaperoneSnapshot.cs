@@ -21,6 +21,43 @@ public sealed record ChaperoneSnapshot(
 
     public RigidTransform Seated() => FromRows(SeatedToRaw);
 
+    /// <summary>
+    /// スナップショットの形状が復元可能か検証する。JSON としては読めても
+    /// 手動編集・部分コピー等で形状が壊れている場合に不正候補を検出する (仕様 F-6)。
+    /// </summary>
+    /// <exception cref="ArgumentException">形状が不正な場合。</exception>
+    public void Validate()
+    {
+        ValidateRows(StandingToRaw, nameof(StandingToRaw));
+        ValidateRows(SeatedToRaw, nameof(SeatedToRaw));
+
+        if (BoundsQuads is null)
+        {
+            throw new ArgumentException($"{nameof(BoundsQuads)} が null です。");
+        }
+
+        foreach (var quad in BoundsQuads)
+        {
+            if (quad is not { Length: 4 } || quad.Any(v => v is not { Length: 3 }))
+            {
+                throw new ArgumentException("BoundsQuads の各壁は 4 頂点 × 3 要素である必要があります。");
+            }
+        }
+
+        if (PlayAreaSize is not null && PlayAreaSize.Length != 2)
+        {
+            throw new ArgumentException("PlayAreaSize は null または 2 要素 [X, Z] である必要があります。");
+        }
+    }
+
+    private static void ValidateRows(float[][] rows, string name)
+    {
+        if (rows is not { Length: 3 } || rows.Any(r => r is not { Length: 4 }))
+        {
+            throw new ArgumentException($"{name} は 3 行 × 4 列である必要があります。");
+        }
+    }
+
     /// <summary>境界頂点を <see cref="Vector3"/> の配列 (壁ごとに 4 頂点) として返す。</summary>
     public Vector3[][] BoundsAsVectors()
         => BoundsQuads
