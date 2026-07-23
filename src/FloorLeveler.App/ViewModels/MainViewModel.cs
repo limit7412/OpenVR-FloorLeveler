@@ -29,6 +29,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private string _correctionSummary = string.Empty;
     private bool _isPreviewing;
     private bool _largeCorrectionAcknowledged;
+    private SamplingMode _samplingMode = SamplingMode.Manual;
+    private IPoseSampler? _sampler;
 
     private readonly AppSettings _initialSettings;
     private readonly BackupService _backupService;
@@ -55,7 +57,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _useRansac = _initialSettings.UseRansac;
 
         ConnectCommand = new RelayCommand(Connect, () => !IsConnected);
-        RecordPointCommand = new RelayCommand(RecordPoint, () => IsConnected && SelectedDevice is not null);
+        RecordPointCommand = new RelayCommand(RecordPoint, () => IsConnected && SelectedDevice is not null && IsManualSampling);
         ClearPointsCommand = new RelayCommand(ClearPoints, () => _points.Count > 0);
         PreviewCommand = new RelayCommand(Preview, () => CanApply);
         ApplyCommand = new RelayCommand(Apply, () => CanApply);
@@ -111,8 +113,54 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             if (SetProperty(ref _selectedDevice, value))
             {
                 RecordPointCommand.RaiseCanExecuteChanged();
+                RebuildSampler(); // デバイスが変わると接地プロファイルも変わる
             }
         }
+    }
+
+    /// <summary>サンプリング方式 (仕様 F-1)。</summary>
+    public SamplingMode SamplingMode
+    {
+        get => _samplingMode;
+        set
+        {
+            if (SetProperty(ref _samplingMode, value))
+            {
+                RebuildSampler();
+                OnPropertyChanged(nameof(IsManualSampling));
+                OnPropertyChanged(nameof(IsAutoSampling));
+                RecordPointCommand.RaiseCanExecuteChanged();
+                StatusMessage = value switch
+                {
+                    SamplingMode.Stillness => "静置方式: デバイスを床に置いて静止させると自動記録します。",
+                    SamplingMode.Continuous => "連続方式: 床上でデバイスを引きずると自動記録します。",
+                    _ => "手動方式: 「記録」ボタンまたは Space で記録します。",
+                };
+            }
+        }
+    }
+
+    public bool IsManualSampling => _samplingMode == SamplingMode.Manual;
+
+    public bool IsAutoSampling => _samplingMode != SamplingMode.Manual;
+
+    // ラジオボタン用の個別バインディング。
+    public bool IsStillnessSampling
+    {
+        get => _samplingMode == SamplingMode.Stillness;
+        set { if (value) SamplingMode = SamplingMode.Stillness; }
+    }
+
+    public bool IsContinuousSampling
+    {
+        get => _samplingMode == SamplingMode.Continuous;
+        set { if (value) SamplingMode = SamplingMode.Continuous; }
+    }
+
+    public bool IsManualSamplingSelected
+    {
+        get => _samplingMode == SamplingMode.Manual;
+        set { if (value) SamplingMode = SamplingMode.Manual; }
     }
 
     /// <summary>true=モード B (実測床面合わせ)、false=モード A (重力水平化)。</summary>
@@ -283,9 +331,48 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             _ => new DeviceContactProfile(device.Kind, System.Numerics.Vector3.Zero),
         };
 
+    /// <summary>選択デバイス・方式に応じた自動サンプラーを (再)生成する。</summary>
+    private void RebuildSampler()
+    {
+        _sampler = (_samplingMode, SelectedDevice) switch
+        {
+            (SamplingMode.Stillness, { } d) => new StillnessSampler(ContactProfileFor(d)),
+            (SamplingMode.Continuous, { } d) => new ContinuousSampler(ContactProfileFor(d)),
+            _ => null,
+        };
+    }
+
+    /// <summary>
+    /// 自動サンプリングの 1 フレーム分の処理 (仕様 F-1)。Shell 側のタイマーが
+    /// 一定間隔で呼び出す。現在のデバイスポーズをサンプラーに与え、記録すべき
+    /// フレームなら点群に追加して再計算する。
+    /// </summary>
+    public void PollSample()
+    {
+        if (_gateway is null || _sampler is null || SelectedDevice is null || _samplingMode == SamplingMode.Manual)
+        {
+            return;
+        }
+
+        var pose = _gateway.GetDevicePose(SelectedDevice.Index);
+        if (pose is null)
+        {
+            return; // トラッキングロスト中は静かにスキップ
+        }
+
+        var timestamp = new TimeSpan(_clock().Ticks);
+        if (_sampler.Feed(timestamp, pose.Value) is { } contact)
+        {
+            _points.Add(contact);
+            StatusMessage = $"自動記録しました (計 {_points.Count} 点)。";
+            Recompute();
+        }
+    }
+
     private void ClearPoints()
     {
         _points.Clear();
+        _sampler?.Reset(); // 自動サンプラーの再武装・間隔状態も初期化する
         StatusMessage = "サンプルをクリアしました。";
         Recompute();
     }
