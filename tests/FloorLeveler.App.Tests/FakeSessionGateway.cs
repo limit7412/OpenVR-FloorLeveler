@@ -50,6 +50,9 @@ internal sealed class FakeSessionGateway : ISessionGateway
 
     public CorrectionResult? LastCorrection { get; private set; }
 
+    /// <summary>設定すると GetDevicePose が常にこのポーズを返す (自動サンプリングのポール用)。</summary>
+    public RigidTransform? PoseForAnyDevice { get; set; }
+
     public void EnqueuePose(RigidTransform? pose) => _nextPoses.Enqueue(pose);
 
     public void EnqueuePosition(Vector3? position)
@@ -58,7 +61,14 @@ internal sealed class FakeSessionGateway : ISessionGateway
     public IReadOnlyList<GatewayDevice> ListDevices() => DeviceList;
 
     public RigidTransform? GetDevicePose(uint deviceIndex)
-        => _nextPoses.Count > 0 ? _nextPoses.Dequeue() : null;
+    {
+        if (PoseForAnyDevice is { } fixedPose)
+        {
+            return fixedPose;
+        }
+
+        return _nextPoses.Count > 0 ? _nextPoses.Dequeue() : null;
+    }
 
     public RigidTransform GetStandingZeroPose()
         => ThrowOnGetStandingZeroPose
