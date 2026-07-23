@@ -275,7 +275,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         // working copy (補正適用済み) を基準に再計算すると補正の基準がずれるため。
         DiscardPreview();
 
-        _estimate = FloorEstimation.Estimate(_points, _useRansac);
+        _estimate = FloorEstimation.Estimate(_points, _useRansac, _initialSettings.RansacThresholdMeters);
         _pendingCorrection = TryComputeCorrection();
 
         // 補正が変わったら確認状態はリセットする (別の大補正を無確認で通さない)。

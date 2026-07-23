@@ -310,6 +310,31 @@ public class MainViewModelTests
     }
 
     [Fact]
+    public void Settings_RansacThresholdIsAppliedToEstimation()
+    {
+        // 閾値を 20mm に緩めた設定では、6mm 浮いた点もインライアとして扱われる。
+        var gateway = new FakeSessionGateway(RigidTransform.Identity);
+        var settings = new FloorLeveler.App.Services.AppSettings
+        {
+            UseRansac = true,
+            RansacThresholdMeters = 0.02f,
+        };
+        var vm = new MainViewModel(() => gateway, settings);
+        vm.ConnectCommand.Execute(null);
+        vm.UseMeasuredFloorMode = true;
+
+        foreach (var (ix, iz) in GridIndices())
+        {
+            var y = (ix + iz) % 2 == 0 ? 0f : 0.006f; // 既定閾値 3mm では外れ値になる散らばり
+            gateway.EnqueuePosition(new Vector3(ix * 0.5f, y, iz * 0.5f));
+            vm.RecordPointCommand.Execute(null);
+        }
+
+        // 全点がインライア扱いなら十分な広がりが維持され補正可能になる。
+        Assert.True(vm.CanApply);
+    }
+
+    [Fact]
     public void Settings_AreLoadedAndSnapshotted()
     {
         var gateway = new FakeSessionGateway(RigidTransform.Identity);
