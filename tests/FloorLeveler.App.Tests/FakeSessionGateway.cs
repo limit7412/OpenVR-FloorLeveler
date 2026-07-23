@@ -26,9 +26,16 @@ internal sealed class FakeSessionGateway : ISessionGateway
     public RigidTransform WorkingStanding { get; private set; }
 
     public List<GatewayDevice> DeviceList { get; } =
-        [new GatewayDevice(3, "GenericTracker", "Vive Tracker 3.0", "LHR-1234")];
+    [
+        new GatewayDevice(0, "Hmd", "Index HMD", "LHR-HMD"),
+        new GatewayDevice(1, "TrackingReference", "Base Station", "LHB-1"),
+        new GatewayDevice(3, "GenericTracker", "Vive Tracker 3.0", "LHR-1234"),
+    ];
 
     public bool CommitResult { get; set; } = true;
+
+    /// <summary>true にすると S→R 取得時に例外を投げる (接続時エラーの再現用)。</summary>
+    public bool ThrowOnGetStandingZeroPose { get; set; }
 
     public int ApplyCount { get; private set; }
 
@@ -50,7 +57,10 @@ internal sealed class FakeSessionGateway : ISessionGateway
     public RigidTransform? GetDevicePose(uint deviceIndex)
         => _nextPoses.Count > 0 ? _nextPoses.Dequeue() : null;
 
-    public RigidTransform GetStandingZeroPose() => WorkingStanding;
+    public RigidTransform GetStandingZeroPose()
+        => ThrowOnGetStandingZeroPose
+            ? throw new InvalidOperationException("chaperone unavailable")
+            : WorkingStanding;
 
     public AppliedCorrectionInfo ApplyCorrection(CorrectionResult correction)
     {

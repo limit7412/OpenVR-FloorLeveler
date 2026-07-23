@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using FloorLeveler.App.Services;
 using FloorLeveler.App.ViewModels;
 using FloorLeveler.App.Views;
 
@@ -14,9 +15,22 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var viewModel = new MainViewModel();
-            desktop.MainWindow = new MainWindow { DataContext = viewModel };
-            desktop.ShutdownRequested += (_, _) => viewModel.Dispose();
+            // 設定の読み込みと終了時の保存 (仕様 F-7)。
+            var settings = AppSettings.Load();
+            var viewModel = new MainViewModel(OpenVrGateway.Connect, settings);
+            var window = new MainWindow
+            {
+                DataContext = viewModel,
+                Width = settings.WindowWidth,
+                Height = settings.WindowHeight,
+            };
+
+            desktop.MainWindow = window;
+            desktop.ShutdownRequested += (_, _) =>
+            {
+                viewModel.SnapshotSettings(window.Width, window.Height).Save();
+                viewModel.Dispose();
+            };
         }
 
         base.OnFrameworkInitializationCompleted();

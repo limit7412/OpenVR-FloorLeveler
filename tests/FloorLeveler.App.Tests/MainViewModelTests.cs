@@ -19,14 +19,33 @@ public class MainViewModelTests
     }
 
     [Fact]
-    public void Connect_PopulatesDevicesAndSelectsFirst()
+    public void Connect_ListsOnlySamplingDevices()
     {
+        // HMD やベースステーションは床に置けないため一覧から除外される (F-1)。
         var gateway = new FakeSessionGateway(RigidTransform.Identity);
         var vm = Connected(gateway);
 
         Assert.True(vm.IsConnected);
         Assert.Single(vm.Devices);
+        Assert.Equal("GenericTracker", vm.Devices[0].Kind);
         Assert.NotNull(vm.SelectedDevice);
+    }
+
+    [Fact]
+    public void Connect_ChaperoneFailureAfterInit_ReturnsToDisconnected()
+    {
+        // OpenVR 初期化は成功しても ChaperoneSetup の読み取りで失敗する環境では
+        // 未接続状態に戻り、未処理例外にならない。
+        var gateway = new FakeSessionGateway(RigidTransform.Identity)
+        {
+            ThrowOnGetStandingZeroPose = true,
+        };
+        var vm = new MainViewModel(() => gateway);
+
+        vm.ConnectCommand.Execute(null);
+
+        Assert.False(vm.IsConnected);
+        Assert.Contains("接続に失敗", vm.StatusMessage);
     }
 
     [Fact]
@@ -239,6 +258,72 @@ public class MainViewModelTests
 
         // 高さ合わせが行われていなければ standing 原点の高さは変わらない。
         Assert.Equal(TiltedStanding(2f).Translation.Y, gateway.CommittedStanding.Translation.Y, 3);
+    }
+
+    [Fact]
+    public void Apply_Twice_DoesNotReapplyStaleCorrection()
+    {
+        // 適用後は保留補正が新姿勢基準で再計算されるため、二度押しで
+        // 同じ補正が再合成されない。
+        var gateway = new FakeSessionGateway(TiltedStanding(2f));
+        var vm = Connected(gateway);
+
+        vm.ApplyCommand.Execute(null);
+        var committedAfterFirst = gateway.CommittedStanding;
+
+        Assert.False(vm.CanApply); // 水平化済みなので補正不要
+        vm.ApplyCommand.Execute(null);
+
+        Assert.Equal(committedAfterFirst, gateway.CommittedStanding);
+        Assert.Equal(1, gateway.CommitCount);
+    }
+
+    [Fact]
+    public void RecomputeDuringPreview_DiscardsPreviewAndKeepsLiveBaseline()
+    {
+        // プレビュー中に RANSAC を切り替えても、補正済み working copy を基準に
+        // 再計算せず、プレビューを破棄して Live 基準で計算し直す。
+        var gateway = new FakeSessionGateway(TiltedStanding(2f));
+        var vm = Connected(gateway);
+
+        vm.PreviewCommand.Execute(null);
+        vm.UseRansac = true; // Recompute が走る
+
+        Assert.False(vm.IsPreviewing);
+        Assert.False(gateway.PreviewVisible);
+        Assert.True(vm.CanApply); // Live 基準なら 2° の補正は引き続き有効
+    }
+
+    [Fact]
+    public void Dispose_DuringPreview_RevertsWorkingCopy()
+    {
+        var gateway = new FakeSessionGateway(TiltedStanding(2f));
+        var vm = Connected(gateway);
+
+        vm.PreviewCommand.Execute(null);
+        vm.Dispose();
+
+        Assert.False(gateway.PreviewVisible);
+        var p = new Vector3(1f, 0.5f, -0.7f);
+        Assert.True(
+            (gateway.WorkingStanding.TransformPoint(p) - gateway.CommittedStanding.TransformPoint(p)).Length() < 1e-5f);
+    }
+
+    [Fact]
+    public void Settings_AreLoadedAndSnapshotted()
+    {
+        var gateway = new FakeSessionGateway(RigidTransform.Identity);
+        var settings = new FloorLeveler.App.Services.AppSettings { UseRansac = true };
+        var vm = new MainViewModel(() => gateway, settings);
+
+        Assert.True(vm.UseRansac);
+
+        vm.UseRansac = false;
+        var snapshot = vm.SnapshotSettings(800, 600);
+
+        Assert.False(snapshot.UseRansac);
+        Assert.Equal(800, snapshot.WindowWidth);
+        Assert.Equal(600, snapshot.WindowHeight);
     }
 
     private static IEnumerable<(int, int)> GridIndices()

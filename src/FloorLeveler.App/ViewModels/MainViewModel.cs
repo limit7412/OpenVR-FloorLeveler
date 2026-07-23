@@ -30,14 +30,18 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private bool _isPreviewing;
     private bool _largeCorrectionAcknowledged;
 
+    private readonly AppSettings _initialSettings;
+
     public MainViewModel()
-        : this(OpenVrGateway.Connect)
+        : this(OpenVrGateway.Connect, AppSettings.Load())
     {
     }
 
-    public MainViewModel(Func<ISessionGateway> gatewayFactory)
+    public MainViewModel(Func<ISessionGateway> gatewayFactory, AppSettings? settings = null)
     {
         _gatewayFactory = gatewayFactory;
+        _initialSettings = settings ?? new AppSettings();
+        _useRansac = _initialSettings.UseRansac;
 
         ConnectCommand = new RelayCommand(Connect, () => !IsConnected);
         RecordPointCommand = new RelayCommand(RecordPoint, () => IsConnected && SelectedDevice is not null);
@@ -184,17 +188,31 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         try
         {
             _gateway = _gatewayFactory();
+
+            // ChaperoneSetup が実際に読めることを確認してから接続成立とする。
+            // (後続の再計算は失敗を握りつぶすため、ここで明示的に検証する。)
+            _ = _gateway.GetStandingZeroPose();
+
             IsConnected = true;
             RefreshDevices();
             Recompute();
             StatusMessage = "SteamVR に接続しました。";
         }
-        catch (SessionUnavailableException ex)
+        catch (Exception ex)
         {
+            // 初期化成功後の ChaperoneSetup 呼び出しなどで失敗する環境もあるため、
+            // 接続シーケンス全体を捕捉して未接続状態へ戻す (仕様 §9)。
+            _gateway?.Dispose();
+            _gateway = null;
             IsConnected = false;
             StatusMessage = $"接続に失敗しました: {ex.Message}";
         }
     }
+
+    /// <summary>床サンプリングに使えるデバイス種別か (仕様 F-1: コントローラー / トラッカー)。</summary>
+    private static bool IsSamplingDevice(GatewayDevice device)
+        => device.Kind is nameof(FloorLeveler.OpenVr.ETrackedDeviceClass.Controller)
+            or nameof(FloorLeveler.OpenVr.ETrackedDeviceClass.GenericTracker);
 
     private void RefreshDevices()
     {
@@ -204,7 +222,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        foreach (var device in _gateway.ListDevices())
+        // HMD やベースステーションは床に置けないため対象から除外する。
+        foreach (var device in _gateway.ListDevices().Where(IsSamplingDevice))
         {
             Devices.Add(device);
         }
@@ -252,6 +271,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// <summary>現在の点群・モード・設定から推定と補正を再計算する (純粋部分は Core)。</summary>
     private void Recompute()
     {
+        // プレビュー中に入力が変わった場合はまずプレビューを破棄する。
+        // working copy (補正適用済み) を基準に再計算すると補正の基準がずれるため。
+        DiscardPreview();
+
         _estimate = FloorEstimation.Estimate(_points, _useRansac);
         _pendingCorrection = TryComputeCorrection();
 
@@ -277,6 +300,20 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     }
 
     private CorrectionResult? TryComputeCorrection()
+    {
+        try
+        {
+            return TryComputeCorrectionCore();
+        }
+        catch (Exception ex)
+        {
+            // ChaperoneSetup の読み取り失敗などは「補正を算出できません」に落とす。
+            StatusMessage = $"補正の算出に失敗しました: {ex.Message}";
+            return null;
+        }
+    }
+
+    private CorrectionResult? TryComputeCorrectionCore()
     {
         if (_gateway is null)
         {
@@ -318,7 +355,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     private void Preview()
     {
-        if (_gateway is null || _pendingCorrection is null)
+        if (_gateway is null || _pendingCorrection is null || !CanApply)
         {
             return;
         }
@@ -352,7 +389,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     private void Apply()
     {
-        if (_gateway is null || _pendingCorrection is null)
+        if (_gateway is null || _pendingCorrection is null || !CanApply)
         {
             return;
         }
@@ -363,7 +400,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             // 改めて 1 回だけ適用する (二重適用の防止)。
             DiscardPreview();
 
-            var applied = _gateway.ApplyCorrection(_pendingCorrection);
+            var correction = _pendingCorrection;
+            var applied = _gateway.ApplyCorrection(correction);
             if (!_gateway.Commit())
             {
                 _gateway.Revert();
@@ -372,6 +410,15 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             }
 
             _lastApplied = applied;
+
+            // 適用済みの補正を保留したままにしない (二度押しで再合成される問題の防止)。
+            // サンプル点は新しい standing 座標へ写し、新姿勢を基準に再計算する。
+            for (var i = 0; i < _points.Count; i++)
+            {
+                _points[i] = correction.StandingSpaceMap.TransformPoint(_points[i]);
+            }
+
+            Recompute();
             StatusMessage = "補正を適用しました。";
             UndoCommand.RaiseCanExecuteChanged();
         }
@@ -415,6 +462,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             }
 
             _lastApplied = null;
+
+            // standing 座標系が元に戻ったため、サンプル点も元の座標へ戻して再計算する。
+            for (var i = 0; i < _points.Count; i++)
+            {
+                _points[i] = inverseMap.TransformPoint(_points[i]);
+            }
+
+            Recompute();
             StatusMessage = "直前の補正を元に戻しました。";
             UndoCommand.RaiseCanExecuteChanged();
         }
@@ -437,8 +492,27 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(CanApply));
     }
 
+    /// <summary>現在の UI 状態を反映した設定を返す (終了時の保存用、仕様 F-7)。</summary>
+    public AppSettings SnapshotSettings(double windowWidth, double windowHeight)
+        => _initialSettings with
+        {
+            UseRansac = _useRansac,
+            WindowWidth = windowWidth,
+            WindowHeight = windowHeight,
+        };
+
     public void Dispose()
     {
+        // 未確定のプレビューを working copy に残したまま終了しない。
+        try
+        {
+            DiscardPreview();
+        }
+        catch
+        {
+            // 終了処理のため失敗は無視する。
+        }
+
         _gateway?.Dispose();
         _gateway = null;
     }
