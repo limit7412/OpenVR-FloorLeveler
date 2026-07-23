@@ -69,6 +69,19 @@ public class BackupServiceTests : IDisposable
     }
 
     [Fact]
+    public void LatestRestorable_SameSecondDifferentKind_UsesSaveOrder()
+    {
+        // 同一秒に preapply → manual と保存した場合、種別の文字列順ではなく
+        // 保存順で最新 (manual) が復元候補になる。
+        var service = new BackupService(_dir);
+        var timestamp = new DateTime(2026, 7, 23, 1, 0, 0);
+        service.Save(Sample(0.01f), timestamp, BackupKind.PreApply);
+        service.Save(Sample(0.02f), timestamp, BackupKind.Manual);
+
+        Assert.Equal(BackupKind.Manual, service.LatestRestorable()!.Kind);
+    }
+
+    [Fact]
     public void LatestRestorable_ExcludesAutoBackups()
     {
         var service = new BackupService(_dir);

@@ -32,9 +32,14 @@ public sealed class BackupService(string? directory = null)
 {
     private readonly string _directory = directory ?? AppPaths.BackupsDirectory;
 
+    // 保存順を表す単調増加カウンタ。ファイル名で種別より前に置くことで、
+    // 同一秒に種別違いを保存しても「保存順」で新しい方が最新になる
+    // (種別の文字列順で並んでしまう問題の回避)。
+    private long _sequence;
+
     /// <summary>
     /// スナップショットを保存し、そのパスを返す。同一秒に複数回保存された場合も
-    /// 既存ファイルを上書きせず、連番を付けて別ファイルとして残す。
+    /// 既存ファイルを上書きせず、保存順を表す連番付きで別ファイルとして残す。
     /// </summary>
     public string Save(ChaperoneSnapshot snapshot, DateTime timestamp, BackupKind kind = BackupKind.Manual)
     {
@@ -45,15 +50,14 @@ public sealed class BackupService(string? directory = null)
         var kindTag = KindTag(kind);
         var stamp = timestamp.ToString("yyyyMMdd-HHmmss");
 
-        for (var seq = 0; ; seq++)
+        while (true)
         {
-            var name = seq == 0
-                ? $"{stamp}-{kindTag}.json"
-                : $"{stamp}-{kindTag}-{seq}.json";
+            var seq = Interlocked.Increment(ref _sequence);
+            var name = $"{stamp}-{seq:D9}-{kindTag}.json";
             var path = Path.Combine(_directory, name);
             try
             {
-                // CreateNew: 既存ファイルがあれば例外 → 連番を進めて衝突を回避する。
+                // CreateNew: 既存ファイルがあれば例外 → 次の連番で衝突を回避する。
                 using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write);
                 using var writer = new StreamWriter(stream);
                 writer.Write(json);
@@ -61,7 +65,7 @@ public sealed class BackupService(string? directory = null)
             }
             catch (IOException) when (File.Exists(path))
             {
-                // 同名が既にある場合は次の連番へ。
+                // 同名が既にある場合 (別セッションの同秒同連番など) は次の連番へ。
             }
         }
     }
@@ -98,9 +102,9 @@ public sealed class BackupService(string? directory = null)
     {
         var name = Path.GetFileNameWithoutExtension(path);
         var parts = name.Split('-');
-        // 形式: {yyyyMMdd}-{HHmmss}-{kind}[-{seq}]
+        // 形式: {yyyyMMdd}-{HHmmss}-{seq}-{kind}
         var timestamp = parts.Length >= 2 ? $"{parts[0]}-{parts[1]}" : name;
-        var kind = parts.Length >= 3 ? ParseKind(parts[2]) : BackupKind.Manual;
+        var kind = parts.Length >= 4 ? ParseKind(parts[3]) : BackupKind.Manual;
         return new BackupEntry(path, timestamp, kind);
     }
 
