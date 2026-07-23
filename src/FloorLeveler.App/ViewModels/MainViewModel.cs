@@ -553,8 +553,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 return;
             }
 
-            // 復元により standing 座標系が変わったため、保留補正・アンドゥ履歴を破棄して
-            // 現在の姿勢を基準に再計算する。
+            // 復元により standing 座標系が不連続に変わるため、旧座標系で記録した
+            // サンプル点・保留補正・アンドゥ履歴をすべて破棄して再計算する
+            // (Apply/Undo と異なり復元前後の姿勢を関係づける単一の変換が無いため、
+            // 点群は写像ではなくクリアする)。
+            _points.Clear();
             _lastApplied = null;
             _log?.Log($"バックアップを復元: {latest.Path}");
             Recompute();
@@ -578,6 +581,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         try
         {
             _backupService.Save(_gateway.CaptureSnapshot(), _clock());
+            // 退避直後は復元ボタンを有効化できる (接続時の RaiseCommandStates は
+            // この保存より前に走るため、ここで明示的に再評価する)。
+            RestoreLatestCommand.RaiseCanExecuteChanged();
         }
         catch
         {

@@ -69,6 +69,27 @@ public class MainViewModelBackupTests : IDisposable
     }
 
     [Fact]
+    public void RestoreLatest_ClearsRecordedSamples()
+    {
+        // 復元は standing 座標系を不連続に変えるため、旧座標系の点群は破棄される。
+        var gateway = new FakeSessionGateway(TiltedStanding(2f));
+        var vm = Connected(gateway, out _);
+        vm.UseMeasuredFloorMode = true;
+
+        for (var i = 0; i < 4; i++)
+        {
+            gateway.EnqueuePosition(new Vector3(i * 0.3f, 0f, i * 0.3f));
+            vm.RecordPointCommand.Execute(null);
+        }
+
+        Assert.True(vm.PointCount > 0);
+
+        vm.RestoreLatestCommand.Execute(null);
+
+        Assert.Equal(0, vm.PointCount);
+    }
+
+    [Fact]
     public void RestoreLatest_CommitFailure_Reverts()
     {
         var gateway = new FakeSessionGateway(TiltedStanding(2f));
