@@ -71,6 +71,12 @@ internal sealed class FakeSessionGateway : ISessionGateway
         return new AppliedCorrectionInfo(old, WorkingStanding, 4);
     }
 
+    public ChaperoneSnapshot CaptureSnapshot()
+        => ChaperoneSnapshot.Create(WorkingStanding, RigidTransform.Identity, [], (2f, 2f));
+
+    public void RestoreSnapshot(ChaperoneSnapshot snapshot)
+        => WorkingStanding = snapshot.Standing();
+
     public bool Commit()
     {
         CommitCount++;
