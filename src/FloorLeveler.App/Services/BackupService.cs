@@ -28,14 +28,21 @@ public sealed record BackupEntry(string Path, string Timestamp, BackupKind Kind)
 /// 保存先は %LOCALAPPDATA%\FloorLeveler\backups\{timestamp}-{kind}.json (NF-3)。
 /// 種別を区別し、復元対象 (最新) からは接続時の自動退避を除外する。
 /// </summary>
-public sealed class BackupService(string? directory = null)
+public sealed class BackupService
 {
-    private readonly string _directory = directory ?? AppPaths.BackupsDirectory;
+    private readonly string _directory;
 
     // 保存順を表す単調増加カウンタ。ファイル名で種別より前に置くことで、
     // 同一秒に種別違いを保存しても「保存順」で新しい方が最新になる
-    // (種別の文字列順で並んでしまう問題の回避)。
+    // (種別の文字列順で並んでしまう問題の回避)。既存ファイルの最大連番から
+    // 継続することで、再起動をまたいでも順序が保たれる。
     private long _sequence;
+
+    public BackupService(string? directory = null)
+    {
+        _directory = directory ?? AppPaths.BackupsDirectory;
+        _sequence = ReadMaxSequence();
+    }
 
     /// <summary>
     /// スナップショットを保存し、そのパスを返す。同一秒に複数回保存された場合も
@@ -55,17 +62,35 @@ public sealed class BackupService(string? directory = null)
             var seq = Interlocked.Increment(ref _sequence);
             var name = $"{stamp}-{seq:D9}-{kindTag}.json";
             var path = Path.Combine(_directory, name);
+
+            FileStream stream;
             try
             {
                 // CreateNew: 既存ファイルがあれば例外 → 次の連番で衝突を回避する。
-                using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write);
-                using var writer = new StreamWriter(stream);
-                writer.Write(json);
-                return path;
+                // ここで捕捉するのは「名前衝突」のみ (書き込み失敗とは区別する)。
+                stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write);
             }
             catch (IOException) when (File.Exists(path))
             {
-                // 同名が既にある場合 (別セッションの同秒同連番など) は次の連番へ。
+                continue;
+            }
+
+            // ファイル生成後の書き込み失敗 (ディスクフル等) は衝突ではないため
+            // リトライせず、部分ファイルを削除して例外を伝播する。
+            try
+            {
+                using (stream)
+                using (var writer = new StreamWriter(stream))
+                {
+                    writer.Write(json);
+                }
+
+                return path;
+            }
+            catch
+            {
+                TryDelete(path);
+                throw;
             }
         }
     }
@@ -77,18 +102,29 @@ public sealed class BackupService(string? directory = null)
             ?? throw new InvalidDataException($"スナップショットの読み込みに失敗しました: {path}");
     }
 
-    /// <summary>保存済みバックアップを新しい順に列挙する。</summary>
+    /// <summary>
+    /// 保存済みバックアップを新しい順に列挙する。
+    /// ディレクトリのアクセス失敗時は空リストを返す (CanExecute 経路から呼ばれても
+    /// 未処理例外にしないため)。
+    /// </summary>
     public IReadOnlyList<BackupEntry> List()
     {
-        if (!Directory.Exists(_directory))
+        try
+        {
+            if (!Directory.Exists(_directory))
+            {
+                return [];
+            }
+
+            return Directory.EnumerateFiles(_directory, "*.json")
+                .OrderByDescending(Path.GetFileName, StringComparer.Ordinal)
+                .Select(ToEntry)
+                .ToArray();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return [];
         }
-
-        return Directory.EnumerateFiles(_directory, "*.json")
-            .OrderByDescending(Path.GetFileName, StringComparer.Ordinal)
-            .Select(ToEntry)
-            .ToArray();
     }
 
     /// <summary>
@@ -97,6 +133,50 @@ public sealed class BackupService(string? directory = null)
     /// </summary>
     public BackupEntry? LatestRestorable()
         => List().FirstOrDefault(e => e.Kind != BackupKind.Auto);
+
+    /// <summary>既存ファイルの最大連番を読み取る。IO 失敗時や不在時は 0。</summary>
+    private long ReadMaxSequence()
+    {
+        try
+        {
+            if (!Directory.Exists(_directory))
+            {
+                return 0;
+            }
+
+            long max = 0;
+            foreach (var file in Directory.EnumerateFiles(_directory, "*.json"))
+            {
+                var parts = Path.GetFileNameWithoutExtension(file).Split('-');
+                // 形式: {yyyyMMdd}-{HHmmss}-{seq}-{kind}
+                if (parts.Length >= 3 && long.TryParse(parts[2], out var seq))
+                {
+                    max = Math.Max(max, seq);
+                }
+            }
+
+            return max;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return 0;
+        }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // 後始末の失敗は握りつぶす。
+        }
+    }
 
     private static BackupEntry ToEntry(string path)
     {

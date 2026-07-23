@@ -82,6 +82,21 @@ public class BackupServiceTests : IDisposable
     }
 
     [Fact]
+    public void Save_NewInstance_ContinuesSequenceAcrossRestart()
+    {
+        // 再起動を模して別インスタンスで同一秒に保存しても、既存の最大連番から
+        // 継続するため保存順が保たれる (preapply より後の manual が最新)。
+        var timestamp = new DateTime(2026, 7, 23, 1, 0, 0);
+        new BackupService(_dir).Save(Sample(0.01f), timestamp, BackupKind.PreApply);
+
+        var restarted = new BackupService(_dir);
+        restarted.Save(Sample(0.02f), timestamp, BackupKind.Manual);
+
+        Assert.Equal(BackupKind.Manual, restarted.LatestRestorable()!.Kind);
+        Assert.Equal(2, restarted.List().Count);
+    }
+
+    [Fact]
     public void LatestRestorable_ExcludesAutoBackups()
     {
         var service = new BackupService(_dir);
