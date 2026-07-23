@@ -16,10 +16,12 @@ Functional Core / Imperative Shell 構成を採用している。
 - `src/FloorLeveler.Poc` — M0 PoC コンソール。SteamVR 実機での S→R 行列の読み書き、
   微小回転の適用、符号規約の検証、スナップショットの保存/復元を行う。
 - `src/FloorLeveler.App` — Avalonia UI のデスクトップ GUI (`FloorLeveler.exe`)。
-  接続状態バー / サンプリング (手動・静置方式・連続方式) / 推定結果 / 補正 /
-  バックアップの縦積み構成 (仕様 §6)。自動サンプリングの判定ロジックは Core の
-  `StillnessSampler` / `ContinuousSampler` に純粋関数として実装し、UI 側は
-  タイマーでポーズを供給するだけ。
+  接続状態バー / サンプリング (手動・静置方式・連続方式) / 推定結果 /
+  点群・床面の可視化 (俯瞰・側面ビュー) / 補正 / バックアップの縦積み構成 (仕様 §6)。
+  自動サンプリングの判定ロジックは Core の `StillnessSampler` / `ContinuousSampler`
+  に純粋関数として実装し、UI 側はタイマーでポーズを供給するだけ。可視化 (F-4) も
+  Core の `FloorProjection` が 2D への投影を純粋関数で行い、`FloorPlotControl` は
+  メートル座標をピクセルに写して描画するだけの薄い Shell。
   OpenVR へのアクセスは `ISessionGateway` の背後に隠し、UI ロジックを実機なしで
   テスト可能にしている。設定 (F-7)・スナップショットのバックアップ/復元 (F-6)・
   ローテーション付きログ (NF-4) を `%LOCALAPPDATA%\FloorLeveler` 配下に保存する。

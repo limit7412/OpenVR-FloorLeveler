@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:FloorLeveler.App.ViewModels"
         xmlns:svc="clr-namespace:FloorLeveler.App.Services"
+        xmlns:ctl="clr-namespace:FloorLeveler.App.Controls"
         x:Class="FloorLeveler.App.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Width="720" Height="900"
@@ -68,6 +69,25 @@
             <CheckBox Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
                       Content="RANSAC で外れ値除去" IsChecked="{Binding UseRansac}" />
           </Grid>
+        </StackPanel>
+      </Border>
+
+      <!-- 点群 / 床面の可視化 (仕様 F-4) -->
+      <Border BorderBrush="#40808080" BorderThickness="1" CornerRadius="6" Padding="12">
+        <StackPanel Spacing="8">
+          <TextBlock Text="点群 / 床面の可視化" FontWeight="Bold" />
+          <Grid ColumnDefinitions="*,12,*">
+            <StackPanel Grid.Column="0" Spacing="4">
+              <TextBlock Text="俯瞰 (真上から)" FontSize="12" Foreground="#A0808080" />
+              <ctl:FloorPlotControl Plot="{Binding TopPlot}" EqualAspect="True" Height="200" />
+            </StackPanel>
+            <StackPanel Grid.Column="2" Spacing="4">
+              <TextBlock Text="側面 (傾き方向の断面)" FontSize="12" Foreground="#A0808080" />
+              <ctl:FloorPlotControl Plot="{Binding SidePlot}" EqualAspect="False" Height="200" />
+            </StackPanel>
+          </Grid>
+          <TextBlock FontSize="11" Foreground="#A0808080" TextWrapping="Wrap"
+                     Text="青点=記録した接地点、橙線=推定床面。側面ビューは傾きを見やすくするため縦横の縮尺が異なります。" />
         </StackPanel>
       </Border>
 
