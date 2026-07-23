@@ -128,11 +128,16 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// 復元対象となる最新のバックアップ。接続時の自動退避 (<see cref="BackupKind.Auto"/>) は
+    /// 復元候補を新しい順に返す。接続時の自動退避 (<see cref="BackupKind.Auto"/>) は
     /// 除外する (悪い補正後の再接続で自動退避が最新になり、正常な適用前状態へ戻れなくなるのを防ぐ)。
+    /// 呼び出し側は先頭から順に試し、破損した候補を飛ばして次の有効な候補へ進める。
     /// </summary>
+    public IReadOnlyList<BackupEntry> RestorableCandidates()
+        => List().Where(e => e.Kind != BackupKind.Auto).ToArray();
+
+    /// <summary>復元対象となる最新のバックアップ。無ければ null。</summary>
     public BackupEntry? LatestRestorable()
-        => List().FirstOrDefault(e => e.Kind != BackupKind.Auto);
+        => RestorableCandidates().FirstOrDefault();
 
     /// <summary>既存ファイルの最大連番を読み取る。IO 失敗時や不在時は 0。</summary>
     private long ReadMaxSequence()

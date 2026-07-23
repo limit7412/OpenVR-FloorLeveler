@@ -424,7 +424,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
             // 適用前の状態をファイルに退避しておく (仕様 F-6)。commit 後にアプリが
             // 落ちてメモリ上のアンドゥ履歴を失っても、適用前へ復旧できるようにする。
-            TrySaveBackup(BackupKind.PreApply);
+            // この退避に失敗した場合はファイル復旧手段を確保できないため適用を中止する。
+            if (!TrySaveBackup(BackupKind.PreApply))
+            {
+                StatusMessage = "適用前のバックアップに失敗したため、適用を中止しました。";
+                return;
+            }
 
             var correction = _pendingCorrection;
             var applied = _gateway.ApplyCorrection(correction);
@@ -541,16 +546,41 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
         // 接続時の自動退避は復元対象から除外する (悪い補正後の再接続で自動退避が
         // 最新になり、正常な適用前状態へ戻れなくなるのを防ぐ)。
-        var latest = _backupService.LatestRestorable();
-        if (latest is null)
+        var candidates = _backupService.RestorableCandidates();
+        if (candidates.Count == 0)
         {
             StatusMessage = "復元できるバックアップがありません。";
             return;
         }
 
+        // 新しい順に試し、破損した候補 (保存中断・不完全コピー等) は飛ばして
+        // 次の有効な候補へ進む。UI は「最新」復元のみのため、1 件の破損で
+        // 復旧不能にならないようにする。
+        ChaperoneSnapshot? snapshot = null;
+        BackupEntry? used = null;
+        var skipped = 0;
+        foreach (var entry in candidates)
+        {
+            try
+            {
+                snapshot = _backupService.Load(entry.Path);
+                used = entry;
+                break;
+            }
+            catch
+            {
+                skipped++;
+            }
+        }
+
+        if (snapshot is null || used is null)
+        {
+            StatusMessage = "有効なバックアップがありませんでした (すべて読み込みに失敗)。";
+            return;
+        }
+
         try
         {
-            var snapshot = _backupService.Load(latest.Path);
             _gateway.RestoreSnapshot(snapshot);
             if (!_gateway.Commit())
             {
@@ -565,9 +595,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             // 点群は写像ではなくクリアする)。
             _points.Clear();
             _lastApplied = null;
-            _log?.Log($"バックアップを復元: {latest.Path}");
+            _log?.Log($"バックアップを復元: {used.Path}" + (skipped > 0 ? $" ({skipped} 件の破損をスキップ)" : string.Empty));
             Recompute();
-            StatusMessage = $"バックアップを復元しました: {latest.Timestamp}";
+            StatusMessage = skipped > 0
+                ? $"バックアップを復元しました: {used.Timestamp} ({skipped} 件の破損をスキップ)"
+                : $"バックアップを復元しました: {used.Timestamp}";
             UndoCommand.RaiseCanExecuteChanged();
         }
         catch (Exception ex)
@@ -580,11 +612,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private void TryAutoBackup()
         => TrySaveBackup(BackupKind.Auto);
 
-    private void TrySaveBackup(BackupKind kind)
+    /// <summary>バックアップを保存し、成功したかを返す。</summary>
+    private bool TrySaveBackup(BackupKind kind)
     {
         if (_gateway is null)
         {
-            return;
+            return false;
         }
 
         try
@@ -593,10 +626,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             // 退避直後は復元ボタンを有効化できる (接続時の RaiseCommandStates は
             // この保存より前に走るため、ここで明示的に再評価する)。
             RestoreLatestCommand.RaiseCanExecuteChanged();
+            return true;
         }
         catch
         {
-            // バックアップの失敗は本処理 (接続・適用) を妨げない。
+            // Auto の失敗は接続を妨げない。PreApply の失敗は呼び出し側で適用を中止する。
+            return false;
         }
     }
 

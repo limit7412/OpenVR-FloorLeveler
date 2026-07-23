@@ -115,6 +115,60 @@ public class MainViewModelBackupTests : IDisposable
     }
 
     [Fact]
+    public void Apply_AbortsWhenPreApplyBackupFails()
+    {
+        // バックアップ先を「ファイル」にして Directory.CreateDirectory を失敗させ、
+        // 適用前バックアップが作れない状況を再現する。
+        Directory.CreateDirectory(_dir);
+        var filePath = Path.Combine(_dir, "not-a-directory");
+        File.WriteAllText(filePath, "x");
+        var backup = new BackupService(filePath);
+
+        var gateway = new FakeSessionGateway(TiltedStanding(2f));
+        var vm = new MainViewModel(() => gateway, backupService: backup, clock: () => new DateTime(2026, 7, 23, 3, 0, 0));
+        vm.ConnectCommand.Execute(null);
+
+        vm.ApplyCommand.Execute(null);
+
+        Assert.Equal(0, gateway.CommitCount);
+        Assert.Contains("適用を中止", vm.StatusMessage);
+    }
+
+    [Fact]
+    public void RestoreLatest_SkipsCorruptBackup()
+    {
+        var gateway = new FakeSessionGateway(TiltedStanding(2f));
+        var vm = Connected(gateway, out var backup);
+        vm.BackupCommand.Execute(null); // 有効な手動退避 (3:00:00)
+
+        // より新しい「壊れた」候補を直接書き込む。
+        File.WriteAllText(
+            Path.Combine(_dir, "20260723-040000-999999999-manual.json"),
+            "this is not valid json {");
+
+        vm.RestoreLatestCommand.Execute(null);
+
+        // 破損した最新をスキップして有効な手動退避へ復元できる。
+        Assert.True(gateway.CommitCount >= 1);
+        Assert.Contains("スキップ", vm.StatusMessage);
+    }
+
+    [Fact]
+    public void RestoreLatest_AllCandidatesCorrupt_ReportsFailure()
+    {
+        var gateway = new FakeSessionGateway(TiltedStanding(2f));
+        var vm = Connected(gateway, out _);
+        File.WriteAllText(
+            Path.Combine(_dir, "20260723-050000-999999999-manual.json"),
+            "broken {");
+
+        vm.RestoreLatestCommand.Execute(null);
+
+        Assert.Equal(0, gateway.CommitCount);
+        Assert.Contains("すべて読み込みに失敗", vm.StatusMessage);
+    }
+
+    [Fact]
     public void RestoreLatest_CommitFailure_Reverts()
     {
         var gateway = new FakeSessionGateway(TiltedStanding(2f));
