@@ -34,6 +34,9 @@ internal sealed class FakeSessionGateway : ISessionGateway
 
     public bool CommitResult { get; set; } = true;
 
+    /// <summary>最初の N 回の Commit を失敗させる (候補ごとの復元失敗の再現用)。</summary>
+    public int CommitFailCount { get; set; }
+
     /// <summary>true にすると S→R 取得時に例外を投げる (接続時エラーの再現用)。</summary>
     public bool ThrowOnGetStandingZeroPose { get; set; }
 
@@ -71,9 +74,21 @@ internal sealed class FakeSessionGateway : ISessionGateway
         return new AppliedCorrectionInfo(old, WorkingStanding, 4);
     }
 
+    public ChaperoneSnapshot CaptureSnapshot()
+        => ChaperoneSnapshot.Create(WorkingStanding, RigidTransform.Identity, [], (2f, 2f));
+
+    public void RestoreSnapshot(ChaperoneSnapshot snapshot)
+        => WorkingStanding = snapshot.Standing();
+
     public bool Commit()
     {
         CommitCount++;
+        if (CommitFailCount > 0)
+        {
+            CommitFailCount--;
+            return false;
+        }
+
         if (!CommitResult)
         {
             return false;

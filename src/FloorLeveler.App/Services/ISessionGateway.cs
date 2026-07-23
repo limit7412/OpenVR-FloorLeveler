@@ -20,6 +20,12 @@ public interface ISessionGateway : IDisposable
     /// <summary>補正を working copy に適用する (commit はしない)。</summary>
     AppliedCorrectionInfo ApplyCorrection(CorrectionResult correction);
 
+    /// <summary>現在の Chaperone 設定のスナップショットを取得する (仕様 F-6)。</summary>
+    ChaperoneSnapshot CaptureSnapshot();
+
+    /// <summary>スナップショットを working copy へ書き戻す (commit はしない)。</summary>
+    void RestoreSnapshot(ChaperoneSnapshot snapshot);
+
     /// <summary>working copy を Live へ反映する。</summary>
     bool Commit();
 

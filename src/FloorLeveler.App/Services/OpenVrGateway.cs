@@ -63,6 +63,12 @@ public sealed class OpenVrGateway : ISessionGateway
             applied.TransformedBoundsQuadCount);
     }
 
+    public ChaperoneSnapshot CaptureSnapshot()
+        => ChaperoneSnapshotIo.Capture(_session.ChaperoneSetup);
+
+    public void RestoreSnapshot(ChaperoneSnapshot snapshot)
+        => ChaperoneSnapshotIo.Restore(_session.ChaperoneSetup, snapshot);
+
     public bool Commit() => _session.ChaperoneSetup.Commit();
 
     public void Revert() => _session.ChaperoneSetup.Revert();

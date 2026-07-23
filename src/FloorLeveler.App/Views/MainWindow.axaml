@@ -8,6 +8,13 @@
         MinWidth="560" MinHeight="640"
         Title="FloorLeveler — 床面水平補正">
 
+  <!-- キーボードショートカット (仕様 §6): 適用=Ctrl+Enter、元に戻す=Ctrl+Z。
+       記録=Space は入力部品 (チェックボックス等) の操作を奪わないようコードビハインドで扱う。 -->
+  <Window.KeyBindings>
+    <KeyBinding Gesture="Ctrl+Enter" Command="{Binding ApplyCommand}" />
+    <KeyBinding Gesture="Ctrl+Z" Command="{Binding UndoCommand}" />
+  </Window.KeyBindings>
+
   <ScrollViewer>
     <StackPanel Margin="16" Spacing="12">
 
@@ -76,9 +83,22 @@
           <StackPanel Orientation="Horizontal" Spacing="8">
             <Button Content="プレビュー" Command="{Binding PreviewCommand}" />
             <Button Content="プレビュー破棄" Command="{Binding CancelPreviewCommand}" />
-            <Button Content="適用" Command="{Binding ApplyCommand}" />
-            <Button Content="元に戻す" Command="{Binding UndoCommand}" />
+            <Button Content="適用" Command="{Binding ApplyCommand}" ToolTip.Tip="Ctrl+Enter" />
+            <Button Content="元に戻す" Command="{Binding UndoCommand}" ToolTip.Tip="Ctrl+Z" />
           </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <!-- バックアップ / 復元 (仕様 F-6) -->
+      <Border BorderBrush="#40808080" BorderThickness="1" CornerRadius="6" Padding="12">
+        <StackPanel Spacing="8">
+          <TextBlock Text="バックアップ / 復元" FontWeight="Bold" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="現在の設定を退避" Command="{Binding BackupCommand}" />
+            <Button Content="最新のバックアップを復元" Command="{Binding RestoreLatestCommand}" />
+          </StackPanel>
+          <TextBlock FontSize="11" Foreground="#A0808080" TextWrapping="Wrap"
+                     Text="接続時に自動で退避されます。復元は %LOCALAPPDATA%\FloorLeveler\backups の最新ファイルを Live へ反映します。" />
         </StackPanel>
       </Border>
 

@@ -16,8 +16,13 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             // 設定の読み込みと終了時の保存 (仕様 F-7)。
+            // バックアップ (F-6) とローテーションログ (NF-4) は本番でも生成する。
             var settings = AppSettings.Load();
-            var viewModel = new MainViewModel(OpenVrGateway.Connect, settings);
+            var viewModel = new MainViewModel(
+                OpenVrGateway.Connect,
+                settings,
+                new BackupService(),
+                new RotatingLogWriter());
             var window = new MainWindow
             {
                 DataContext = viewModel,

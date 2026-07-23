@@ -31,16 +31,27 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private bool _largeCorrectionAcknowledged;
 
     private readonly AppSettings _initialSettings;
+    private readonly BackupService _backupService;
+    private readonly RotatingLogWriter? _log;
+    private readonly Func<DateTime> _clock;
 
     public MainViewModel()
-        : this(OpenVrGateway.Connect, AppSettings.Load())
+        : this(OpenVrGateway.Connect, AppSettings.Load(), new BackupService(), new RotatingLogWriter())
     {
     }
 
-    public MainViewModel(Func<ISessionGateway> gatewayFactory, AppSettings? settings = null)
+    public MainViewModel(
+        Func<ISessionGateway> gatewayFactory,
+        AppSettings? settings = null,
+        BackupService? backupService = null,
+        RotatingLogWriter? log = null,
+        Func<DateTime>? clock = null)
     {
         _gatewayFactory = gatewayFactory;
         _initialSettings = settings ?? new AppSettings();
+        _backupService = backupService ?? new BackupService();
+        _log = log;
+        _clock = clock ?? (() => DateTime.Now);
         _useRansac = _initialSettings.UseRansac;
 
         ConnectCommand = new RelayCommand(Connect, () => !IsConnected);
@@ -50,6 +61,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         ApplyCommand = new RelayCommand(Apply, () => CanApply);
         CancelPreviewCommand = new RelayCommand(CancelPreview, () => IsPreviewing);
         UndoCommand = new RelayCommand(Undo, () => _lastApplied is not null && !IsPreviewing);
+        BackupCommand = new RelayCommand(Backup, () => IsConnected && !IsPreviewing);
+        RestoreLatestCommand = new RelayCommand(RestoreLatest, () => IsConnected && !IsPreviewing && _backupService.LatestRestorable() is not null);
     }
 
     public ObservableCollection<GatewayDevice> Devices { get; } = [];
@@ -67,6 +80,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public RelayCommand CancelPreviewCommand { get; }
 
     public RelayCommand UndoCommand { get; }
+
+    public RelayCommand BackupCommand { get; }
+
+    public RelayCommand RestoreLatestCommand { get; }
 
     public bool IsConnected
     {
@@ -196,6 +213,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             IsConnected = true;
             RefreshDevices();
             Recompute();
+
+            // 初回接続時に現在の設定を自動退避しておく (仕様 F-6)。
+            TryAutoBackup();
+
+            _log?.Log("接続しました。");
             StatusMessage = "SteamVR に接続しました。";
         }
         catch (Exception ex)
@@ -400,6 +422,15 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             // 改めて 1 回だけ適用する (二重適用の防止)。
             DiscardPreview();
 
+            // 適用前の状態をファイルに退避しておく (仕様 F-6)。commit 後にアプリが
+            // 落ちてメモリ上のアンドゥ履歴を失っても、適用前へ復旧できるようにする。
+            // この退避に失敗した場合はファイル復旧手段を確保できないため適用を中止する。
+            if (!TrySaveBackup(BackupKind.PreApply))
+            {
+                StatusMessage = "適用前のバックアップに失敗したため、適用を中止しました。";
+                return;
+            }
+
             var correction = _pendingCorrection;
             var applied = _gateway.ApplyCorrection(correction);
             if (!_gateway.Commit())
@@ -410,6 +441,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             }
 
             _lastApplied = applied;
+
+            // 適用操作は変更前後の行列値を記録する (仕様 NF-4)。
+            _log?.Log(
+                $"補正を適用 (モード {correction.Mode}, 回転 {correction.RotationAngleDegrees:F3}°): " +
+                $"S→R {FormatMatrix(applied.OldStandingToRaw)} → {FormatMatrix(applied.NewStandingToRaw)}");
 
             // 適用済みの補正を保留したままにしない (二度押しで再合成される問題の防止)。
             // サンプル点は新しい standing 座標へ写し、新姿勢を基準に再計算する。
@@ -462,6 +498,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             }
 
             _lastApplied = null;
+            _log?.Log("直前の補正を元に戻しました。");
 
             // standing 座標系が元に戻ったため、サンプル点も元の座標へ戻して再計算する。
             for (var i = 0; i < _points.Count; i++)
@@ -480,6 +517,134 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
+    private void Backup()
+    {
+        if (_gateway is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var path = _backupService.Save(_gateway.CaptureSnapshot(), _clock(), BackupKind.Manual);
+            _log?.Log($"バックアップを保存: {path}");
+            StatusMessage = $"バックアップを保存しました: {Path.GetFileName(path)}";
+            RestoreLatestCommand.RaiseCanExecuteChanged();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"バックアップに失敗しました: {ex.Message}";
+        }
+    }
+
+    private void RestoreLatest()
+    {
+        if (_gateway is null)
+        {
+            return;
+        }
+
+        // 接続時の自動退避は復元対象から除外する (悪い補正後の再接続で自動退避が
+        // 最新になり、正常な適用前状態へ戻れなくなるのを防ぐ)。
+        var candidates = _backupService.RestorableCandidates();
+        if (candidates.Count == 0)
+        {
+            StatusMessage = "復元できるバックアップがありません。";
+            return;
+        }
+
+        // 新しい順に試し、復元できない候補 (保存中断・不完全コピー・手動編集による
+        // 形状不正、または OpenVR が Live 反映を拒否する値) は飛ばして次の有効な
+        // 候補へ進む。読み込み・形状検証・working copy への書き戻し・commit までを
+        // 候補ごとに試し、いずれで失敗しても revert して次の候補へ。
+        var skipped = 0;
+        foreach (var entry in candidates)
+        {
+            try
+            {
+                var snapshot = _backupService.Load(entry.Path);
+                snapshot.Validate(); // 形状不正 (行列・境界・プレイエリア) はここで例外
+                _gateway.RestoreSnapshot(snapshot);
+            }
+            catch
+            {
+                skipped++;
+                TryRevert();
+                continue;
+            }
+
+            if (!_gateway.Commit())
+            {
+                // Live 反映が拒否された場合も候補固有の失敗として扱い、次候補を試す。
+                _gateway.Revert();
+                skipped++;
+                continue;
+            }
+
+            // 復元により standing 座標系が不連続に変わるため、旧座標系で記録した
+            // サンプル点・保留補正・アンドゥ履歴をすべて破棄して再計算する
+            // (Apply/Undo と異なり復元前後の姿勢を関係づける単一の変換が無いため、
+            // 点群は写像ではなくクリアする)。
+            _points.Clear();
+            _lastApplied = null;
+            _log?.Log($"バックアップを復元: {entry.Path}" + (skipped > 0 ? $" ({skipped} 件をスキップ)" : string.Empty));
+            Recompute();
+            StatusMessage = skipped > 0
+                ? $"バックアップを復元しました: {entry.Timestamp} ({skipped} 件をスキップ)"
+                : $"バックアップを復元しました: {entry.Timestamp}";
+            UndoCommand.RaiseCanExecuteChanged();
+            return;
+        }
+
+        StatusMessage = "有効なバックアップがありませんでした (すべて復元に失敗)。";
+    }
+
+    private void TryRevert()
+    {
+        try
+        {
+            _gateway?.Revert();
+        }
+        catch
+        {
+            // 破損候補スキップ時の後始末失敗は無視する。
+        }
+    }
+
+    private void TryAutoBackup()
+        => TrySaveBackup(BackupKind.Auto);
+
+    /// <summary>バックアップを保存し、成功したかを返す。</summary>
+    private bool TrySaveBackup(BackupKind kind)
+    {
+        if (_gateway is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            _backupService.Save(_gateway.CaptureSnapshot(), _clock(), kind);
+            // 退避直後は復元ボタンを有効化できる (接続時の RaiseCommandStates は
+            // この保存より前に走るため、ここで明示的に再評価する)。
+            RestoreLatestCommand.RaiseCanExecuteChanged();
+            return true;
+        }
+        catch
+        {
+            // Auto の失敗は接続を妨げない。PreApply の失敗は呼び出し側で適用を中止する。
+            return false;
+        }
+    }
+
+    private static string FormatMatrix(RigidTransform t)
+    {
+        var m = t.ToRowMajor3x4();
+        return $"[{m[0, 0]:F4},{m[0, 1]:F4},{m[0, 2]:F4},{m[0, 3]:F4}; "
+            + $"{m[1, 0]:F4},{m[1, 1]:F4},{m[1, 2]:F4},{m[1, 3]:F4}; "
+            + $"{m[2, 0]:F4},{m[2, 1]:F4},{m[2, 2]:F4},{m[2, 3]:F4}]";
+    }
+
     private void RaiseCommandStates()
     {
         ConnectCommand.RaiseCanExecuteChanged();
@@ -489,6 +654,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         ApplyCommand.RaiseCanExecuteChanged();
         CancelPreviewCommand.RaiseCanExecuteChanged();
         UndoCommand.RaiseCanExecuteChanged();
+        BackupCommand.RaiseCanExecuteChanged();
+        RestoreLatestCommand.RaiseCanExecuteChanged();
         OnPropertyChanged(nameof(CanApply));
     }
 

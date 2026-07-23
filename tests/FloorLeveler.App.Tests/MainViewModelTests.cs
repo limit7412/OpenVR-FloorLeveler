@@ -1,21 +1,38 @@
 using System.Numerics;
+using FloorLeveler.App.Services;
 using FloorLeveler.App.ViewModels;
 using FloorLeveler.Core;
 
 namespace FloorLeveler.App.Tests;
 
-public class MainViewModelTests
+public class MainViewModelTests : IDisposable
 {
+    // 単体テストが実バックアップディレクトリ (%LOCALAPPDATA%) を汚染しないよう、
+    // すべての MainViewModel に一時ディレクトリの BackupService を注入する。
+    private readonly string _dir = Path.Combine(
+        Path.GetTempPath(), "floorleveler-vmtest-" + Guid.NewGuid().ToString("N"));
+
     private static RigidTransform TiltedStanding(float rollDegrees)
         => new(
             Quaternion.CreateFromAxisAngle(Vector3.UnitZ, rollDegrees * MathF.PI / 180f),
             new Vector3(0f, 1.0f, 0f));
 
-    private static MainViewModel Connected(FakeSessionGateway gateway)
+    private MainViewModel Create(Func<ISessionGateway> factory, AppSettings? settings = null)
+        => new(factory, settings, new BackupService(_dir));
+
+    private MainViewModel Connected(FakeSessionGateway gateway)
     {
-        var vm = new MainViewModel(() => gateway);
+        var vm = Create(() => gateway);
         vm.ConnectCommand.Execute(null);
         return vm;
+    }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_dir))
+        {
+            Directory.Delete(_dir, recursive: true);
+        }
     }
 
     [Fact]
@@ -40,7 +57,7 @@ public class MainViewModelTests
         {
             ThrowOnGetStandingZeroPose = true,
         };
-        var vm = new MainViewModel(() => gateway);
+        var vm = Create(() => gateway);
 
         vm.ConnectCommand.Execute(null);
 
@@ -51,7 +68,7 @@ public class MainViewModelTests
     [Fact]
     public void Connect_Failure_SetsStatusAndStaysDisconnected()
     {
-        var vm = new MainViewModel(() => throw new Services.SessionUnavailableException("no steamvr"));
+        var vm = Create(() => throw new SessionUnavailableException("no steamvr"));
 
         vm.ConnectCommand.Execute(null);
 
@@ -314,12 +331,12 @@ public class MainViewModelTests
     {
         // 閾値を 20mm に緩めた設定では、6mm 浮いた点もインライアとして扱われる。
         var gateway = new FakeSessionGateway(RigidTransform.Identity);
-        var settings = new FloorLeveler.App.Services.AppSettings
+        var settings = new AppSettings
         {
             UseRansac = true,
             RansacThresholdMeters = 0.02f,
         };
-        var vm = new MainViewModel(() => gateway, settings);
+        var vm = Create(() => gateway, settings);
         vm.ConnectCommand.Execute(null);
         vm.UseMeasuredFloorMode = true;
 
@@ -338,8 +355,8 @@ public class MainViewModelTests
     public void Settings_AreLoadedAndSnapshotted()
     {
         var gateway = new FakeSessionGateway(RigidTransform.Identity);
-        var settings = new FloorLeveler.App.Services.AppSettings { UseRansac = true };
-        var vm = new MainViewModel(() => gateway, settings);
+        var settings = new AppSettings { UseRansac = true };
+        var vm = Create(() => gateway, settings);
 
         Assert.True(vm.UseRansac);
 
