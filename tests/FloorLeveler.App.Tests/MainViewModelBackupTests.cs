@@ -24,40 +24,52 @@ public class MainViewModelBackupTests : IDisposable
     }
 
     [Fact]
-    public void Connect_AutomaticallyCreatesBackup()
+    public void Connect_CreatesAutoBackup_NotRestorableUntilChange()
+    {
+        // 接続時は自動退避 (Auto) のみ。Auto は復元対象外のため、まだ復元できない。
+        var gateway = new FakeSessionGateway(TiltedStanding(2f));
+        var vm = Connected(gateway, out var backup);
+
+        Assert.Single(backup.List());
+        Assert.Equal(BackupKind.Auto, backup.List()[0].Kind);
+        Assert.Null(backup.LatestRestorable());
+        Assert.False(vm.RestoreLatestCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void Backup_SavesManualRestorableEntry()
     {
         var gateway = new FakeSessionGateway(TiltedStanding(2f));
         var vm = Connected(gateway, out var backup);
 
-        Assert.NotNull(backup.Latest());
+        vm.BackupCommand.Execute(null);
+
+        Assert.Equal(BackupKind.Manual, backup.LatestRestorable()!.Kind);
         Assert.True(vm.RestoreLatestCommand.CanExecute(null));
+        Assert.Contains("バックアップを保存", vm.StatusMessage);
     }
 
     [Fact]
-    public void Backup_SavesCurrentState()
+    public void Apply_SavesPreApplyBackup()
     {
+        // 適用前の状態が PreApply として復元候補に残る。
         var gateway = new FakeSessionGateway(TiltedStanding(2f));
         var vm = Connected(gateway, out var backup);
 
-        var before = backup.List().Count;
-        // clock は固定のため、別名になるよう 1 秒進めた VM で保存する。
-        var vm2 = new MainViewModel(() => gateway, backupService: backup, clock: () => new DateTime(2026, 7, 23, 3, 0, 5));
-        vm2.ConnectCommand.Execute(null);
-        vm2.BackupCommand.Execute(null);
+        vm.ApplyCommand.Execute(null);
 
-        Assert.True(backup.List().Count > before);
-        Assert.Contains("バックアップを保存", vm2.StatusMessage);
+        Assert.Equal(BackupKind.PreApply, backup.LatestRestorable()!.Kind);
     }
 
     [Fact]
-    public void RestoreLatest_RestoresCommittedState()
+    public void RestoreLatest_RestoresPreApplyState()
     {
-        // 2° 傾いた状態を接続時に自動退避 → 補正を適用 → 復元で元の 2° に戻る。
+        // 2° 傾いた状態を接続 → 補正を適用 (適用前に PreApply 退避) → 復元で 2° に戻る。
         var original = TiltedStanding(2f);
         var gateway = new FakeSessionGateway(original);
         var vm = Connected(gateway, out _);
 
-        vm.ApplyCommand.Execute(null); // 水平化を commit
+        vm.ApplyCommand.Execute(null); // 水平化を commit (適用前状態=2° を退避)
         Assert.NotEqual(original, gateway.CommittedStanding);
 
         vm.RestoreLatestCommand.Execute(null);
@@ -69,11 +81,24 @@ public class MainViewModelBackupTests : IDisposable
     }
 
     [Fact]
+    public void RestoreLatest_ExcludesAutoBackup()
+    {
+        // Auto しか無い状態では復元は行われない (自動退避は復元対象外)。
+        var gateway = new FakeSessionGateway(TiltedStanding(2f));
+        var vm = Connected(gateway, out _);
+
+        vm.RestoreLatestCommand.Execute(null);
+
+        Assert.Equal(0, gateway.CommitCount);
+    }
+
+    [Fact]
     public void RestoreLatest_ClearsRecordedSamples()
     {
         // 復元は standing 座標系を不連続に変えるため、旧座標系の点群は破棄される。
         var gateway = new FakeSessionGateway(TiltedStanding(2f));
         var vm = Connected(gateway, out _);
+        vm.BackupCommand.Execute(null); // 復元候補を作る
         vm.UseMeasuredFloorMode = true;
 
         for (var i = 0; i < 4; i++)
@@ -94,6 +119,7 @@ public class MainViewModelBackupTests : IDisposable
     {
         var gateway = new FakeSessionGateway(TiltedStanding(2f));
         var vm = Connected(gateway, out _);
+        vm.BackupCommand.Execute(null); // 復元候補を作る
         gateway.CommitResult = false;
 
         vm.RestoreLatestCommand.Execute(null);

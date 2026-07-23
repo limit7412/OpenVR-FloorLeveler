@@ -34,15 +34,15 @@ public class BackupServiceTests : IDisposable
     public void List_ReturnsNewestFirst()
     {
         var service = new BackupService(_dir);
-        service.Save(Sample(0.01f), new DateTime(2026, 7, 23, 1, 0, 0));
-        service.Save(Sample(0.02f), new DateTime(2026, 7, 23, 2, 0, 0));
+        service.Save(Sample(0.01f), new DateTime(2026, 7, 23, 1, 0, 0), BackupKind.Manual);
+        service.Save(Sample(0.02f), new DateTime(2026, 7, 23, 2, 0, 0), BackupKind.Manual);
 
         var list = service.List();
 
         Assert.Equal(2, list.Count);
         Assert.Equal("20260723-020000", list[0].Timestamp);
         Assert.Equal("20260723-010000", list[1].Timestamp);
-        Assert.Equal(list[0].Path, service.Latest()!.Path);
+        Assert.Equal(list[0].Path, service.LatestRestorable()!.Path);
     }
 
     [Fact]
@@ -50,7 +50,38 @@ public class BackupServiceTests : IDisposable
     {
         var service = new BackupService(_dir);
         Assert.Empty(service.List());
-        Assert.Null(service.Latest());
+        Assert.Null(service.LatestRestorable());
+    }
+
+    [Fact]
+    public void Save_SameSecond_DoesNotOverwrite()
+    {
+        var service = new BackupService(_dir);
+        var timestamp = new DateTime(2026, 7, 23, 1, 0, 0);
+
+        var p1 = service.Save(Sample(0.01f), timestamp, BackupKind.PreApply);
+        var p2 = service.Save(Sample(0.02f), timestamp, BackupKind.PreApply);
+
+        Assert.NotEqual(p1, p2);
+        Assert.True(File.Exists(p1));
+        Assert.True(File.Exists(p2));
+        Assert.Equal(2, service.List().Count);
+    }
+
+    [Fact]
+    public void LatestRestorable_ExcludesAutoBackups()
+    {
+        var service = new BackupService(_dir);
+        // 手動退避のあとに (より新しい) 自動退避があっても、復元候補は手動退避のまま。
+        service.Save(Sample(0.01f), new DateTime(2026, 7, 23, 1, 0, 0), BackupKind.Manual);
+        service.Save(Sample(0.02f), new DateTime(2026, 7, 23, 2, 0, 0), BackupKind.Auto);
+
+        var restorable = service.LatestRestorable();
+
+        Assert.NotNull(restorable);
+        Assert.Equal(BackupKind.Manual, restorable!.Kind);
+        // List 自体には Auto も含まれる。
+        Assert.Equal(2, service.List().Count);
     }
 
     public void Dispose()

@@ -8,9 +8,9 @@
         MinWidth="560" MinHeight="640"
         Title="FloorLeveler — 床面水平補正">
 
-  <!-- キーボードショートカット (仕様 §6): 記録=Space、適用=Ctrl+Enter、元に戻す=Ctrl+Z。 -->
+  <!-- キーボードショートカット (仕様 §6): 適用=Ctrl+Enter、元に戻す=Ctrl+Z。
+       記録=Space は入力部品 (チェックボックス等) の操作を奪わないようコードビハインドで扱う。 -->
   <Window.KeyBindings>
-    <KeyBinding Gesture="Space" Command="{Binding RecordPointCommand}" />
     <KeyBinding Gesture="Ctrl+Enter" Command="{Binding ApplyCommand}" />
     <KeyBinding Gesture="Ctrl+Z" Command="{Binding UndoCommand}" />
   </Window.KeyBindings>

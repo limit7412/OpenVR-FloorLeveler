@@ -62,7 +62,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         CancelPreviewCommand = new RelayCommand(CancelPreview, () => IsPreviewing);
         UndoCommand = new RelayCommand(Undo, () => _lastApplied is not null && !IsPreviewing);
         BackupCommand = new RelayCommand(Backup, () => IsConnected && !IsPreviewing);
-        RestoreLatestCommand = new RelayCommand(RestoreLatest, () => IsConnected && !IsPreviewing && _backupService.Latest() is not null);
+        RestoreLatestCommand = new RelayCommand(RestoreLatest, () => IsConnected && !IsPreviewing && _backupService.LatestRestorable() is not null);
     }
 
     public ObservableCollection<GatewayDevice> Devices { get; } = [];
@@ -422,6 +422,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             // 改めて 1 回だけ適用する (二重適用の防止)。
             DiscardPreview();
 
+            // 適用前の状態をファイルに退避しておく (仕様 F-6)。commit 後にアプリが
+            // 落ちてメモリ上のアンドゥ履歴を失っても、適用前へ復旧できるようにする。
+            TrySaveBackup(BackupKind.PreApply);
+
             var correction = _pendingCorrection;
             var applied = _gateway.ApplyCorrection(correction);
             if (!_gateway.Commit())
@@ -517,7 +521,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
         try
         {
-            var path = _backupService.Save(_gateway.CaptureSnapshot(), _clock());
+            var path = _backupService.Save(_gateway.CaptureSnapshot(), _clock(), BackupKind.Manual);
             _log?.Log($"バックアップを保存: {path}");
             StatusMessage = $"バックアップを保存しました: {Path.GetFileName(path)}";
             RestoreLatestCommand.RaiseCanExecuteChanged();
@@ -535,7 +539,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        var latest = _backupService.Latest();
+        // 接続時の自動退避は復元対象から除外する (悪い補正後の再接続で自動退避が
+        // 最新になり、正常な適用前状態へ戻れなくなるのを防ぐ)。
+        var latest = _backupService.LatestRestorable();
         if (latest is null)
         {
             StatusMessage = "復元できるバックアップがありません。";
@@ -572,6 +578,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     }
 
     private void TryAutoBackup()
+        => TrySaveBackup(BackupKind.Auto);
+
+    private void TrySaveBackup(BackupKind kind)
     {
         if (_gateway is null)
         {
@@ -580,14 +589,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
         try
         {
-            _backupService.Save(_gateway.CaptureSnapshot(), _clock());
+            _backupService.Save(_gateway.CaptureSnapshot(), _clock(), kind);
             // 退避直後は復元ボタンを有効化できる (接続時の RaiseCommandStates は
             // この保存より前に走るため、ここで明示的に再評価する)。
             RestoreLatestCommand.RaiseCanExecuteChanged();
         }
         catch
         {
-            // 自動退避の失敗は接続を妨げない。
+            // バックアップの失敗は本処理 (接続・適用) を妨げない。
         }
     }
 
