@@ -110,6 +110,7 @@ public sealed class ContinuousSampler : IPoseSampler
     private readonly float _maxSpeed;
     private readonly float _minSpacing;
     private readonly float _minMotion;
+    private readonly TimeSpan _maxGap;
 
     private TimedSample? _previous;
     private Vector3? _lastRecorded;
@@ -121,16 +122,24 @@ public sealed class ContinuousSampler : IPoseSampler
     /// 記録に必要な直前フレームからの最小移動量 (既定 5 mm)。静止しているフレームを
     /// 記録しないことで、持ち上げ後に空中で止めた姿勢などが点群に混入するのを防ぐ。
     /// </param>
+    /// <param name="maxSampleGap">
+    /// 直前サンプルからの時間差がこれを超えたら連続性が切れたとみなし、そのフレームを
+    /// 基準確立のみに使う (既定 300 ms)。タイマー停止・スリープなどで観測が飛んだ際、
+    /// 大きな dt で速度を過小評価して高速移動を記録するのを防ぐ (想定ポーリング間隔
+    /// 50 ms の数倍)。
+    /// </param>
     public ContinuousSampler(
         DeviceContactProfile profile,
         float maxSpeedMetersPerSecond = Sampling.DefaultMaxSpeedMetersPerSecond,
         float minSpacingMeters = 0.05f,
-        float minMotionMeters = 0.005f)
+        float minMotionMeters = 0.005f,
+        TimeSpan? maxSampleGap = null)
     {
         _profile = profile ?? throw new ArgumentNullException(nameof(profile));
         _maxSpeed = maxSpeedMetersPerSecond;
         _minSpacing = minSpacingMeters;
         _minMotion = minMotionMeters;
+        _maxGap = maxSampleGap ?? TimeSpan.FromMilliseconds(300);
     }
 
     /// <summary>
@@ -146,6 +155,15 @@ public sealed class ContinuousSampler : IPoseSampler
         // このフレームを基準の確立だけに使い記録しない。ドラッグの途中でない初回ポーズ
         // (手に持った高さなど) や、欠落をまたいだ大きな dt での速度過小評価による誤記録を防ぐ。
         if (_previous is not { } prev)
+        {
+            _previous = current;
+            return null;
+        }
+
+        // タイマー停止・スリープ等で前サンプルから想定以上に時間が空いた場合は、連続性が
+        // 切れたとみなしてこのフレームを基準確立のみに使う。大きな dt では持ち上げ・移動でも
+        // 平均速度が閾値以下に見え、欠落中の移動先を床点として記録してしまうため。
+        if (timestamp - prev.Timestamp > _maxGap)
         {
             _previous = current;
             return null;

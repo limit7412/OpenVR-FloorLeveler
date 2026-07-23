@@ -216,6 +216,25 @@ public class ContinuousSamplerTests
     }
 
     [Fact]
+    public void Feed_LargeTimeGap_IsTreatedAsWarmup()
+    {
+        var sampler = new ContinuousSampler(Zero, maxSpeedMetersPerSecond: 1.0f, minSpacingMeters: 0.01f);
+
+        sampler.Feed(TimeSpan.FromSeconds(0.0), At(new Vector3(0f, 0f, 0f)));       // 基準
+        var recorded = sampler.Feed(TimeSpan.FromSeconds(0.1), At(new Vector3(0.05f, 0f, 0f))); // 通常記録
+        Assert.NotNull(recorded);
+
+        // タイマーが数秒停止。復帰直後は遠くへ移動しているが、大きな dt で平均速度は
+        // 閾値以下に見える (2.0m / 2.9s ≈ 0.69 m/s < 1.0)。欠落として記録しない。
+        var afterGap = sampler.Feed(TimeSpan.FromSeconds(3.0), At(new Vector3(2f, 0f, 0f)));
+        Assert.Null(afterGap);
+
+        // 次フレームからは通常の速度判定に戻る (0.05m / 0.1s = 0.5 m/s → 記録)。
+        var next = sampler.Feed(TimeSpan.FromSeconds(3.1), At(new Vector3(2.05f, 0f, 0f)));
+        Assert.NotNull(next);
+    }
+
+    [Fact]
     public void Feed_ResumesRecordingAfterFastMotion()
     {
         var sampler = new ContinuousSampler(Zero, maxSpeedMetersPerSecond: 1.0f, minSpacingMeters: 0.01f);
