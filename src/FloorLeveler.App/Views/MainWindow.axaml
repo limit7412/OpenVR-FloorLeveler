@@ -1,0 +1,88 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:FloorLeveler.App.ViewModels"
+        xmlns:svc="clr-namespace:FloorLeveler.App.Services"
+        x:Class="FloorLeveler.App.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Width="720" Height="900"
+        MinWidth="560" MinHeight="640"
+        Title="FloorLeveler — 床面水平補正">
+
+  <ScrollViewer>
+    <StackPanel Margin="16" Spacing="12">
+
+      <!-- 接続状態バー (仕様 §6) -->
+      <Border Background="#20808080" CornerRadius="6" Padding="12">
+        <StackPanel Spacing="8">
+          <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" />
+          <Button Content="接続 / 再試行" Command="{Binding ConnectCommand}" />
+        </StackPanel>
+      </Border>
+
+      <!-- デバイス選択とサンプリング -->
+      <Border BorderBrush="#40808080" BorderThickness="1" CornerRadius="6" Padding="12">
+        <StackPanel Spacing="8">
+          <TextBlock Text="デバイス選択とサンプリング" FontWeight="Bold" />
+          <ComboBox ItemsSource="{Binding Devices}"
+                    SelectedItem="{Binding SelectedDevice}"
+                    HorizontalAlignment="Stretch">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="svc:GatewayDevice">
+                <TextBlock Text="{Binding DisplayName}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="記録" Command="{Binding RecordPointCommand}" />
+            <Button Content="クリア" Command="{Binding ClearPointsCommand}" />
+            <TextBlock VerticalAlignment="Center" Text="{Binding PointCount, StringFormat='記録点数: {0}'}" />
+            <TextBlock VerticalAlignment="Center" Text="{Binding SpreadText, StringFormat='広がり: {0}'}" />
+          </StackPanel>
+          <TextBlock FontSize="11" Foreground="#A0808080" TextWrapping="Wrap"
+                     IsVisible="{Binding IsSamplingRequired}"
+                     Text="モード B は床にデバイスを置いて 3 点以上・広がり 30 cm 以上を記録してください。" />
+        </StackPanel>
+      </Border>
+
+      <!-- 推定結果 -->
+      <Border BorderBrush="#40808080" BorderThickness="1" CornerRadius="6" Padding="12">
+        <StackPanel Spacing="6">
+          <TextBlock Text="推定結果" FontWeight="Bold" />
+          <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="4">
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="傾き:" />
+            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding TiltText}" />
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="残差:" />
+            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ResidualText}" />
+            <CheckBox Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
+                      Content="RANSAC で外れ値除去" IsChecked="{Binding UseRansac}" />
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <!-- 補正 -->
+      <Border BorderBrush="#40808080" BorderThickness="1" CornerRadius="6" Padding="12">
+        <StackPanel Spacing="8">
+          <TextBlock Text="補正" FontWeight="Bold" />
+          <StackPanel Orientation="Horizontal" Spacing="16">
+            <RadioButton GroupName="mode" Content="モード A: 重力水平化"
+                         IsChecked="{Binding !UseMeasuredFloorMode}" />
+            <RadioButton GroupName="mode" Content="モード B: 実測床面合わせ"
+                         IsChecked="{Binding UseMeasuredFloorMode}" />
+          </StackPanel>
+          <TextBlock Text="{Binding CorrectionSummary}" TextWrapping="Wrap" />
+          <CheckBox Content="大きな補正 (10° 超) を理解した上で適用する"
+                    IsVisible="{Binding NeedsConfirmation}"
+                    IsChecked="{Binding LargeCorrectionAcknowledged}" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="プレビュー" Command="{Binding PreviewCommand}" />
+            <Button Content="プレビュー破棄" Command="{Binding CancelPreviewCommand}" />
+            <Button Content="適用" Command="{Binding ApplyCommand}" />
+            <Button Content="元に戻す" Command="{Binding UndoCommand}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+    </StackPanel>
+  </ScrollViewer>
+
+</Window>

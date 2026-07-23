@@ -15,10 +15,13 @@ Functional Core / Imperative Shell 構成を採用している。
   P/Invoke で呼び出す薄いラッパー (`OpenVrSession` / `VrSystem` / `ChaperoneTuner`)。
 - `src/FloorLeveler.Poc` — M0 PoC コンソール。SteamVR 実機での S→R 行列の読み書き、
   微小回転の適用、符号規約の検証、スナップショットの保存/復元を行う。
+- `src/FloorLeveler.App` — Avalonia UI のデスクトップ GUI (`FloorLeveler.exe`)。
+  接続状態バー / サンプリング / 推定結果 / 補正パネルの縦積み構成 (仕様 §6)。
+  OpenVR へのアクセスは `ISessionGateway` の背後に隠し、UI ロジックを実機なしで
+  テスト可能にしている。
 - `tests/FloorLeveler.Core.Tests` — Core の単体テスト (xUnit)。
 - `tests/FloorLeveler.OpenVr.Tests` — interop 層の構造体レイアウト・変換テスト。
-
-GUI (`FloorLeveler.App`) は M2 で追加する。
+- `tests/FloorLeveler.App.Tests` — GUI の ViewModel テスト (fake gateway 使用)。
 
 ## M0 PoC の実行 (Windows + SteamVR)
 
@@ -40,3 +43,17 @@ dotnet run --project src/FloorLeveler.Poc -- level --commit    # 重力水平化
 dotnet build
 dotnet test
 ```
+
+## 単一 exe の発行 (仕様 §8)
+
+```bash
+dotnet publish src/FloorLeveler.App -c Release -r win-x64 --self-contained \
+  -p:PublishSingleFile=true \
+  -p:IncludeNativeLibrariesForSelfExtract=true \
+  -p:EnableCompressionInSingleFile=true \
+  -o publish
+```
+
+`publish/FloorLeveler.exe` (約 48 MB) が生成される。CI でもサイズ予算
+(NF-2: 60 MB 以下) を検証している。実行には `openvr_api.dll` が exe と
+同じディレクトリに必要 (exe への内包は今後対応)。

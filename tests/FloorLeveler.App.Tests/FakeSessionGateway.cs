@@ -1,0 +1,99 @@
+using System.Numerics;
+using FloorLeveler.App.Services;
+using FloorLeveler.Core;
+
+namespace FloorLeveler.App.Tests;
+
+/// <summary>
+/// テスト用の <see cref="ISessionGateway"/>。SteamVR なしで VM を検証する。
+/// 実際の IVRChaperoneSetup と同様に working copy / commit 済み状態を持ち、
+/// 二重適用や revert 漏れを検出できるようにしている。
+/// </summary>
+internal sealed class FakeSessionGateway : ISessionGateway
+{
+    private readonly Queue<RigidTransform?> _nextPoses = new();
+
+    public FakeSessionGateway(RigidTransform standingZeroPose)
+    {
+        CommittedStanding = standingZeroPose;
+        WorkingStanding = standingZeroPose;
+    }
+
+    /// <summary>Live (commit 済み) の S→R。</summary>
+    public RigidTransform CommittedStanding { get; private set; }
+
+    /// <summary>working copy の S→R。</summary>
+    public RigidTransform WorkingStanding { get; private set; }
+
+    public List<GatewayDevice> DeviceList { get; } =
+    [
+        new GatewayDevice(0, "Hmd", "Index HMD", "LHR-HMD"),
+        new GatewayDevice(1, "TrackingReference", "Base Station", "LHB-1"),
+        new GatewayDevice(3, "GenericTracker", "Vive Tracker 3.0", "LHR-1234"),
+    ];
+
+    public bool CommitResult { get; set; } = true;
+
+    /// <summary>true にすると S→R 取得時に例外を投げる (接続時エラーの再現用)。</summary>
+    public bool ThrowOnGetStandingZeroPose { get; set; }
+
+    public int ApplyCount { get; private set; }
+
+    public int CommitCount { get; private set; }
+
+    public int RevertCount { get; private set; }
+
+    public bool PreviewVisible { get; private set; }
+
+    public CorrectionResult? LastCorrection { get; private set; }
+
+    public void EnqueuePose(RigidTransform? pose) => _nextPoses.Enqueue(pose);
+
+    public void EnqueuePosition(Vector3? position)
+        => _nextPoses.Enqueue(position is { } p ? RigidTransform.CreateTranslation(p) : null);
+
+    public IReadOnlyList<GatewayDevice> ListDevices() => DeviceList;
+
+    public RigidTransform? GetDevicePose(uint deviceIndex)
+        => _nextPoses.Count > 0 ? _nextPoses.Dequeue() : null;
+
+    public RigidTransform GetStandingZeroPose()
+        => ThrowOnGetStandingZeroPose
+            ? throw new InvalidOperationException("chaperone unavailable")
+            : WorkingStanding;
+
+    public AppliedCorrectionInfo ApplyCorrection(CorrectionResult correction)
+    {
+        ApplyCount++;
+        LastCorrection = correction;
+        var old = WorkingStanding;
+        WorkingStanding = correction.ApplyTo(WorkingStanding);
+        return new AppliedCorrectionInfo(old, WorkingStanding, 4);
+    }
+
+    public bool Commit()
+    {
+        CommitCount++;
+        if (!CommitResult)
+        {
+            return false;
+        }
+
+        CommittedStanding = WorkingStanding;
+        return true;
+    }
+
+    public void Revert()
+    {
+        RevertCount++;
+        WorkingStanding = CommittedStanding;
+    }
+
+    public void ShowPreview() => PreviewVisible = true;
+
+    public void HidePreview() => PreviewVisible = false;
+
+    public void Dispose()
+    {
+    }
+}
