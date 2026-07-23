@@ -349,10 +349,18 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// </summary>
     public void PollSample()
     {
-        // プレビュー中は自動記録しない (記録→再計算で未確定プレビューが破棄されるのを防ぐ)。
         if (_gateway is null || _sampler is null || SelectedDevice is null
-            || _samplingMode == SamplingMode.Manual || IsPreviewing)
+            || _samplingMode == SamplingMode.Manual)
         {
+            return;
+        }
+
+        // プレビュー中は自動記録しない (記録→再計算で未確定プレビューが破棄されるのを防ぐ)。
+        // 観測を止める間は連続性を切り、プレビュー中の移動をまたいだ大きな dt で速度を
+        // 過小評価して復帰後に誤記録するのを防ぐ (トラッキングロスト時と同じ扱い)。
+        if (IsPreviewing)
+        {
+            _sampler.BreakContinuity();
             return;
         }
 

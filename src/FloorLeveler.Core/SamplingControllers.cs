@@ -109,50 +109,65 @@ public sealed class ContinuousSampler : IPoseSampler
     private readonly DeviceContactProfile _profile;
     private readonly float _maxSpeed;
     private readonly float _minSpacing;
+    private readonly float _minMotion;
 
     private TimedSample? _previous;
     private Vector3? _lastRecorded;
-    private bool _warmup;
 
     /// <param name="profile">接地オフセットのプロファイル。</param>
     /// <param name="maxSpeedMetersPerSecond">これを超える速度のフレームは棄却 (既定 1.0 m/s)。</param>
     /// <param name="minSpacingMeters">記録点の最小間隔 (既定 5 cm)。点群の過密を防ぐ。</param>
+    /// <param name="minMotionMeters">
+    /// 記録に必要な直前フレームからの最小移動量 (既定 5 mm)。静止しているフレームを
+    /// 記録しないことで、持ち上げ後に空中で止めた姿勢などが点群に混入するのを防ぐ。
+    /// </param>
     public ContinuousSampler(
         DeviceContactProfile profile,
         float maxSpeedMetersPerSecond = Sampling.DefaultMaxSpeedMetersPerSecond,
-        float minSpacingMeters = 0.05f)
+        float minSpacingMeters = 0.05f,
+        float minMotionMeters = 0.005f)
     {
         _profile = profile ?? throw new ArgumentNullException(nameof(profile));
         _maxSpeed = maxSpeedMetersPerSecond;
         _minSpacing = minSpacingMeters;
+        _minMotion = minMotionMeters;
     }
 
     /// <summary>
     /// デバイスの時刻付きポーズを 1 フレーム分与える。記録すべきフレームでは接地点を
-    /// 返し、速度超過・間隔不足のフレームでは null を返す。
+    /// 返し、速度超過・間隔不足・静止のフレームでは null を返す。
     /// </summary>
     public Vector3? Feed(TimeSpan timestamp, RigidTransform devicePose)
     {
         var contact = _profile.ContactPoint(devicePose);
         var current = new TimedSample(timestamp, contact);
 
-        // 観測が途切れた直後の 1 フレームは基準の再確立のみに使い記録しない。
-        // 欠落をまたいだ大きな dt で速度を過小評価し、高速移動を記録するのを防ぐ。
-        if (_warmup)
+        // 直前フレームが無い場合 (開始直後・トラッキングロスト後・速度超過の棄却後) は、
+        // このフレームを基準の確立だけに使い記録しない。ドラッグの途中でない初回ポーズ
+        // (手に持った高さなど) や、欠落をまたいだ大きな dt での速度過小評価による誤記録を防ぐ。
+        if (_previous is not { } prev)
         {
-            _warmup = false;
             _previous = current;
             return null;
         }
 
-        // 速度超過 (持ち上げ等) のフレームは棄却する。基準を更新して次に備える。
-        if (_previous is { } prev && Sampling.ExceedsSpeed(prev, current, _maxSpeed))
+        // 速度超過 (持ち上げ等) のフレームは棄却し、連続性を切る。棄却したポーズを
+        // 基準にすると、次に空中で静止した姿勢を速度 0 と誤判定して記録してしまうため、
+        // 床上のドラッグが再確立する (次フレームで基準を取り直す) まで再武装しない。
+        if (Sampling.ExceedsSpeed(prev, current, _maxSpeed))
         {
-            _previous = current;
+            _previous = null;
             return null;
         }
 
         _previous = current;
+
+        // 静止しているフレーム (直前からの移動がごくわずか) は記録しない。点はドラッグ中の
+        // 移動からのみ得る。これにより持ち上げ後に空中で止めた姿勢を接地点にしない。
+        if ((contact - prev.Position).Length() < _minMotion)
+        {
+            return null;
+        }
 
         // 最小間隔を満たす場合のみ記録する。
         if (_lastRecorded is { } last && (contact - last).Length() < _minSpacing)
@@ -168,16 +183,11 @@ public sealed class ContinuousSampler : IPoseSampler
     {
         _previous = null;
         _lastRecorded = null;
-        _warmup = false;
     }
 
     /// <summary>
-    /// 観測が途切れた場合に速度の連続性を切り、次の有効フレームをウォームアップ
-    /// (基準確立のみ) にする。記録済み位置は維持し、欠落中の移動を記録しない。
+    /// 観測が途切れた場合に速度の連続性を切り、次の有効フレームを基準確立のみ
+    /// (記録しない) にする。記録済み位置は維持し、欠落中の移動を記録しない。
     /// </summary>
-    public void BreakContinuity()
-    {
-        _previous = null;
-        _warmup = true;
-    }
+    public void BreakContinuity() => _previous = null;
 }

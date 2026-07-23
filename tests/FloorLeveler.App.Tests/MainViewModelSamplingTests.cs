@@ -183,13 +183,16 @@ public class MainViewModelSamplingTests : IDisposable
         vm.SamplingMode = SamplingMode.Continuous;
 
         gateway.PoseForAnyDevice = RigidTransform.CreateTranslation(new Vector3(0f, 0f, 0f));
-        vm.PollSample(); // 1 点目
+        vm.PollSample(); // 基準確立 (初回ポーズは記録しない)
+        gateway.PoseForAnyDevice = RigidTransform.CreateTranslation(new Vector3(0.03f, 0f, 0f));
+        vm.PollSample(); // ゆっくりドラッグで 1 点目を記録
         var afterFirst = vm.PointCount;
+        Assert.True(afterFirst >= 1);
 
         gateway.PoseForAnyDevice = null; // トラッキングロスト
         vm.PollSample();
 
-        // 復帰後、遠くへワープ (欠落をまたぐ) → ウォームアップで記録されない。
+        // 復帰後、遠くへワープ (欠落をまたぐ) → 基準の取り直しのみで記録されない。
         gateway.PoseForAnyDevice = RigidTransform.CreateTranslation(new Vector3(3f, 0f, 3f));
         vm.PollSample();
 

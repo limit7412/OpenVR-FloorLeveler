@@ -139,11 +139,49 @@ public class ContinuousSamplerTests
     {
         var sampler = new ContinuousSampler(Zero, minSpacingMeters: 0.1f);
 
-        var first = sampler.Feed(TimeSpan.FromSeconds(0.0), At(new Vector3(0f, 0f, 0f)));
-        var second = sampler.Feed(TimeSpan.FromSeconds(0.1), At(new Vector3(0.02f, 0f, 0f))); // 2cm
+        sampler.Feed(TimeSpan.FromSeconds(0.0), At(new Vector3(0f, 0f, 0f)));       // ウォームアップ(基準確立)
+        var first = sampler.Feed(TimeSpan.FromSeconds(0.1), At(new Vector3(0.08f, 0f, 0f)));  // 8cm 移動 → 記録
+        var second = sampler.Feed(TimeSpan.FromSeconds(0.2), At(new Vector3(0.10f, 0f, 0f))); // +2cm → 間隔不足
 
         Assert.NotNull(first);
         Assert.Null(second);
+    }
+
+    [Fact]
+    public void Feed_FirstPose_IsWarmupAndNotRecorded()
+    {
+        var sampler = new ContinuousSampler(Zero, minSpacingMeters: 0.05f);
+
+        // 切り替え直後の初回ポーズ (手に持った高さなど) は基準確立のみで記録しない。
+        var first = sampler.Feed(TimeSpan.FromSeconds(0.0), At(new Vector3(0.5f, 0f, 0.5f)));
+        Assert.Null(first);
+
+        // 2 フレーム目以降、ゆっくり引きずると記録される。
+        var dragged = sampler.Feed(TimeSpan.FromSeconds(0.1), At(new Vector3(0.56f, 0f, 0.5f)));
+        Assert.NotNull(dragged);
+    }
+
+    [Fact]
+    public void Feed_HeldStillInAirAfterLift_DoesNotRecord()
+    {
+        var sampler = new ContinuousSampler(Zero, maxSpeedMetersPerSecond: 1.0f, minSpacingMeters: 0.05f);
+
+        // 床でドラッグして 1 点記録。
+        sampler.Feed(TimeSpan.FromSeconds(0.0), At(new Vector3(0f, 0f, 0f)));       // 基準
+        var recorded = sampler.Feed(TimeSpan.FromSeconds(0.1), At(new Vector3(0.06f, 0f, 0f)));
+        Assert.NotNull(recorded);
+
+        // 素早く空中へ持ち上げる → 速度超過で棄却。
+        var lifted = sampler.Feed(TimeSpan.FromSeconds(0.2), At(new Vector3(0.06f, 0.8f, 0f)));
+        Assert.Null(lifted);
+
+        // 空中でしばらく静止するだけ (記録点から 5cm 以上離れているが速度 0)。
+        // 棄却後は基準を取り直し、静止は記録しないため接地点にならない。
+        for (var i = 0; i < 10; i++)
+        {
+            var still = sampler.Feed(TimeSpan.FromSeconds(0.3 + i * 0.1), At(new Vector3(0.06f, 0.8f, 0f)));
+            Assert.Null(still);
+        }
     }
 
     [Fact]
@@ -182,11 +220,14 @@ public class ContinuousSamplerTests
     {
         var sampler = new ContinuousSampler(Zero, maxSpeedMetersPerSecond: 1.0f, minSpacingMeters: 0.01f);
 
-        sampler.Feed(TimeSpan.FromSeconds(0.0), At(new Vector3(0f, 0f, 0f)));
-        sampler.Feed(TimeSpan.FromSeconds(0.1), At(new Vector3(0.5f, 0.5f, 0f))); // 棄却
-        // 再び床でゆっくり動かす (0.05m / 0.1s = 0.5 m/s)。
-        var resumed = sampler.Feed(TimeSpan.FromSeconds(0.2), At(new Vector3(0.55f, 0.5f, 0f)));
+        sampler.Feed(TimeSpan.FromSeconds(0.0), At(new Vector3(0f, 0f, 0f)));       // 基準
+        sampler.Feed(TimeSpan.FromSeconds(0.1), At(new Vector3(0.5f, 0.5f, 0f)));   // 高速 → 棄却、連続性を切る
+        // 棄却直後のフレームは基準の取り直しのみで記録しない (棄却ポーズを基準にしない)。
+        var rebasis = sampler.Feed(TimeSpan.FromSeconds(0.2), At(new Vector3(0.55f, 0.5f, 0f)));
+        Assert.Null(rebasis);
 
+        // 再び床でゆっくり動かす (0.05m / 0.1s = 0.5 m/s) → 記録が再開する。
+        var resumed = sampler.Feed(TimeSpan.FromSeconds(0.3), At(new Vector3(0.60f, 0.5f, 0f)));
         Assert.NotNull(resumed);
     }
 }
