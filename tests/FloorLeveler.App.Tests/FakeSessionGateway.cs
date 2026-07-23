@@ -4,15 +4,26 @@ using FloorLeveler.Core;
 
 namespace FloorLeveler.App.Tests;
 
-/// <summary>テスト用の <see cref="ISessionGateway"/>。SteamVR なしで VM を検証する。</summary>
+/// <summary>
+/// テスト用の <see cref="ISessionGateway"/>。SteamVR なしで VM を検証する。
+/// 実際の IVRChaperoneSetup と同様に working copy / commit 済み状態を持ち、
+/// 二重適用や revert 漏れを検出できるようにしている。
+/// </summary>
 internal sealed class FakeSessionGateway : ISessionGateway
 {
-    private readonly Queue<Vector3?> _nextPositions = new();
+    private readonly Queue<RigidTransform?> _nextPoses = new();
 
     public FakeSessionGateway(RigidTransform standingZeroPose)
-        => StandingZeroPose = standingZeroPose;
+    {
+        CommittedStanding = standingZeroPose;
+        WorkingStanding = standingZeroPose;
+    }
 
-    public RigidTransform StandingZeroPose { get; set; }
+    /// <summary>Live (commit 済み) の S→R。</summary>
+    public RigidTransform CommittedStanding { get; private set; }
+
+    /// <summary>working copy の S→R。</summary>
+    public RigidTransform WorkingStanding { get; private set; }
 
     public List<GatewayDevice> DeviceList { get; } =
         [new GatewayDevice(3, "GenericTracker", "Vive Tracker 3.0", "LHR-1234")];
@@ -29,30 +40,44 @@ internal sealed class FakeSessionGateway : ISessionGateway
 
     public CorrectionResult? LastCorrection { get; private set; }
 
-    public void EnqueuePosition(Vector3? position) => _nextPositions.Enqueue(position);
+    public void EnqueuePose(RigidTransform? pose) => _nextPoses.Enqueue(pose);
+
+    public void EnqueuePosition(Vector3? position)
+        => _nextPoses.Enqueue(position is { } p ? RigidTransform.CreateTranslation(p) : null);
 
     public IReadOnlyList<GatewayDevice> ListDevices() => DeviceList;
 
-    public Vector3? GetDevicePosition(uint deviceIndex)
-        => _nextPositions.Count > 0 ? _nextPositions.Dequeue() : null;
+    public RigidTransform? GetDevicePose(uint deviceIndex)
+        => _nextPoses.Count > 0 ? _nextPoses.Dequeue() : null;
 
-    public RigidTransform GetStandingZeroPose() => StandingZeroPose;
+    public RigidTransform GetStandingZeroPose() => WorkingStanding;
 
     public AppliedCorrectionInfo ApplyCorrection(CorrectionResult correction)
     {
         ApplyCount++;
         LastCorrection = correction;
-        var newStanding = correction.ApplyTo(StandingZeroPose);
-        return new AppliedCorrectionInfo(StandingZeroPose, newStanding, 4);
+        var old = WorkingStanding;
+        WorkingStanding = correction.ApplyTo(WorkingStanding);
+        return new AppliedCorrectionInfo(old, WorkingStanding, 4);
     }
 
     public bool Commit()
     {
         CommitCount++;
-        return CommitResult;
+        if (!CommitResult)
+        {
+            return false;
+        }
+
+        CommittedStanding = WorkingStanding;
+        return true;
     }
 
-    public void Revert() => RevertCount++;
+    public void Revert()
+    {
+        RevertCount++;
+        WorkingStanding = CommittedStanding;
+    }
 
     public void ShowPreview() => PreviewVisible = true;
 

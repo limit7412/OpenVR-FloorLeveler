@@ -49,6 +49,28 @@ public class FloorEstimationTests
     }
 
     [Fact]
+    public void Estimate_WithRansac_QualityIsEvaluatedOnInliers()
+    {
+        // 狭い範囲の床点群 + 遠い外れ値 1 点。外れ値込みだと広がり 30cm を
+        // 満たすが、インライアだけでは満たさない → CanCorrect は false。
+        var points = new List<Vector3>
+        {
+            new(0.00f, 0f, 0.00f),
+            new(0.05f, 0f, 0.00f),
+            new(0.00f, 0f, 0.05f),
+            new(0.05f, 0f, 0.05f),
+            new(0.025f, 0f, 0.025f),
+            new(1.0f, 0.5f, 1.0f), // 持ち上げ外れ値 (これを含めると広がりが出てしまう)
+        };
+
+        var estimate = FloorEstimation.Estimate(points, useRansac: true);
+
+        Assert.Equal(1, estimate.OutlierCount);
+        Assert.False(estimate.Quality.HasEnoughSpread);
+        Assert.False(estimate.CanCorrect);
+    }
+
+    [Fact]
     public void Estimate_WithRansac_ReportsOutliers()
     {
         var points = new List<Vector3>();

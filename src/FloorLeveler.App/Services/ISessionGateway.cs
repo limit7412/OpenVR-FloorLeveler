@@ -1,4 +1,3 @@
-using System.Numerics;
 using FloorLeveler.Core;
 
 namespace FloorLeveler.App.Services;
@@ -13,7 +12,7 @@ public interface ISessionGateway : IDisposable
     IReadOnlyList<GatewayDevice> ListDevices();
 
     /// <summary>指定デバイスの standing 座標系での現在ポーズ。無効なら null。</summary>
-    Vector3? GetDevicePosition(uint deviceIndex);
+    RigidTransform? GetDevicePose(uint deviceIndex);
 
     /// <summary>現在の standing → raw 変換 (S→R 行列)。</summary>
     RigidTransform GetStandingZeroPose();

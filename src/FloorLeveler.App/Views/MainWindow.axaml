@@ -70,8 +70,12 @@
                          IsChecked="{Binding UseMeasuredFloorMode}" />
           </StackPanel>
           <TextBlock Text="{Binding CorrectionSummary}" TextWrapping="Wrap" />
+          <CheckBox Content="大きな補正 (10° 超) を理解した上で適用する"
+                    IsVisible="{Binding NeedsConfirmation}"
+                    IsChecked="{Binding LargeCorrectionAcknowledged}" />
           <StackPanel Orientation="Horizontal" Spacing="8">
             <Button Content="プレビュー" Command="{Binding PreviewCommand}" />
+            <Button Content="プレビュー破棄" Command="{Binding CancelPreviewCommand}" />
             <Button Content="適用" Command="{Binding ApplyCommand}" />
             <Button Content="元に戻す" Command="{Binding UndoCommand}" />
           </StackPanel>

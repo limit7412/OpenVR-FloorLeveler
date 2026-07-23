@@ -30,7 +30,13 @@ public static class FloorEstimation
             if (useRansac)
             {
                 var result = Ransac.Run(points, ransacThresholdMeters);
-                return new FloorEstimate(result.Fit, quality, result.OutlierCount);
+
+                // 品質評価は外れ値を除いたインライア点群でやり直す。全点で評価すると
+                // 遠い外れ値 1 点が広がり条件を満たしてしまい、実際には狭い点群で
+                // 補正できてしまう。
+                var inlierPoints = result.InlierIndices.Select(i => points[i]).ToArray();
+                var inlierQuality = Sampling.Evaluate(inlierPoints);
+                return new FloorEstimate(result.Fit, inlierQuality, result.OutlierCount);
             }
 
             return new FloorEstimate(PlaneFit.Fit(points), quality, 0);

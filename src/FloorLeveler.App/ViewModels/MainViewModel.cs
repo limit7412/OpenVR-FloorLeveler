@@ -28,6 +28,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private FloorEstimate? _estimate;
     private string _correctionSummary = string.Empty;
     private bool _isPreviewing;
+    private bool _largeCorrectionAcknowledged;
 
     public MainViewModel()
         : this(OpenVrGateway.Connect)
@@ -43,7 +44,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         ClearPointsCommand = new RelayCommand(ClearPoints, () => _points.Count > 0);
         PreviewCommand = new RelayCommand(Preview, () => CanApply);
         ApplyCommand = new RelayCommand(Apply, () => CanApply);
-        UndoCommand = new RelayCommand(Undo, () => _lastApplied is not null);
+        CancelPreviewCommand = new RelayCommand(CancelPreview, () => IsPreviewing);
+        UndoCommand = new RelayCommand(Undo, () => _lastApplied is not null && !IsPreviewing);
     }
 
     public ObservableCollection<GatewayDevice> Devices { get; } = [];
@@ -57,6 +59,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public RelayCommand PreviewCommand { get; }
 
     public RelayCommand ApplyCommand { get; }
+
+    public RelayCommand CancelPreviewCommand { get; }
 
     public RelayCommand UndoCommand { get; }
 
@@ -140,11 +144,37 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public bool IsPreviewing
     {
         get => _isPreviewing;
-        private set => SetProperty(ref _isPreviewing, value);
+        private set
+        {
+            if (SetProperty(ref _isPreviewing, value))
+            {
+                RaiseCommandStates();
+            }
+        }
     }
 
-    /// <summary>推定・モードから算出した補正が適用可能か。</summary>
-    public bool CanApply => _pendingCorrection is { IsNegligible: false };
+    /// <summary>10° 超の補正 (仕様 F-3 の確認要求) に対するユーザーの確認状態。</summary>
+    public bool LargeCorrectionAcknowledged
+    {
+        get => _largeCorrectionAcknowledged;
+        set
+        {
+            if (SetProperty(ref _largeCorrectionAcknowledged, value))
+            {
+                RaiseCommandStates();
+            }
+        }
+    }
+
+    /// <summary>補正が 10° を超えており適用前に確認チェックが必要かどうか。</summary>
+    public bool NeedsConfirmation => _pendingCorrection is { RequiresConfirmation: true };
+
+    /// <summary>
+    /// 推定・モードから算出した補正が適用可能か。10° 超の補正は
+    /// <see cref="LargeCorrectionAcknowledged"/> をチェックするまで適用できない。
+    /// </summary>
+    public bool CanApply => _pendingCorrection is { IsNegligible: false } c
+        && (!c.RequiresConfirmation || LargeCorrectionAcknowledged);
 
     /// <summary>モード B のみサンプリングが必須 (モード A は S→R 行列だけで算出可能)。</summary>
     public bool IsSamplingRequired => _mode == CorrectionMode.MeasuredFloor;
@@ -189,17 +219,28 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        var position = _gateway.GetDevicePosition(SelectedDevice.Index);
-        if (position is null)
+        var pose = _gateway.GetDevicePose(SelectedDevice.Index);
+        if (pose is null)
         {
             StatusMessage = "トラッキングが有効なサンプルを取得できませんでした。";
             return;
         }
 
-        _points.Add(position.Value);
+        // デバイス原点ではなく接地点を記録する (仕様 F-1 の接地オフセット)。
+        var profile = ContactProfileFor(SelectedDevice);
+        _points.Add(profile.ContactPoint(pose.Value));
         StatusMessage = $"サンプルを記録しました (計 {_points.Count} 点)。";
         Recompute();
     }
+
+    /// <summary>デバイス種別に対応する内蔵接地プロファイルを返す (F-1)。</summary>
+    private static DeviceContactProfile ContactProfileFor(GatewayDevice device)
+        => device.Kind switch
+        {
+            nameof(FloorLeveler.OpenVr.ETrackedDeviceClass.GenericTracker) => BuiltInDeviceProfiles.ViveTracker30,
+            nameof(FloorLeveler.OpenVr.ETrackedDeviceClass.Controller) => BuiltInDeviceProfiles.IndexController,
+            _ => new DeviceContactProfile(device.Kind, System.Numerics.Vector3.Zero),
+        };
 
     private void ClearPoints()
     {
@@ -214,6 +255,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _estimate = FloorEstimation.Estimate(_points, _useRansac);
         _pendingCorrection = TryComputeCorrection();
 
+        // 補正が変わったら確認状態はリセットする (別の大補正を無確認で通さない)。
+        _largeCorrectionAcknowledged = false;
+        OnPropertyChanged(nameof(LargeCorrectionAcknowledged));
+
         CorrectionSummary = _pendingCorrection switch
         {
             null => "補正を算出できません。",
@@ -227,6 +272,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(TiltText));
         OnPropertyChanged(nameof(ResidualText));
         OnPropertyChanged(nameof(IsSamplingRequired));
+        OnPropertyChanged(nameof(NeedsConfirmation));
         RaiseCommandStates();
     }
 
@@ -239,15 +285,35 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
         if (_mode == CorrectionMode.GravityAlign)
         {
-            // モード A はサンプリング不要。床サンプルがあれば高さ合わせにも使う。
+            // モード A はサンプリング不要。床サンプルは品質要件 (点数・広がり) を
+            // 満たす場合のみ高さ合わせに使う。品質不足の点群 (机上の誤記録など) で
+            // 高さを動かさないため。
             var standing = _gateway.GetStandingZeroPose();
-            return Correction.ComputeGravityAlign(standing, _estimate?.Plane);
+            var floor = _estimate is { CanCorrect: true } e ? e.Plane : null;
+            return Correction.ComputeGravityAlign(standing, floor);
         }
 
         // モード B は推定平面が必須。
         return _estimate is { CanCorrect: true, Plane: { } plane }
             ? Correction.ComputeFloorAlign(plane)
             : null;
+    }
+
+    /// <summary>
+    /// プレビュー中の working copy を破棄して commit 済み状態に戻す。
+    /// Preview / Apply はいずれも呼び出し前にこれを通すことで、プレビューで
+    /// 適用済みの補正に重ねて再適用してしまう二重適用を防ぐ。
+    /// </summary>
+    private void DiscardPreview()
+    {
+        if (_gateway is null || !IsPreviewing)
+        {
+            return;
+        }
+
+        _gateway.HidePreview();
+        _gateway.Revert();
+        IsPreviewing = false;
     }
 
     private void Preview()
@@ -259,10 +325,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
         try
         {
+            DiscardPreview();
             _gateway.ApplyCorrection(_pendingCorrection);
             _gateway.ShowPreview();
             IsPreviewing = true;
-            StatusMessage = "プレビュー中です。「適用」で確定、「元に戻す」で破棄します。";
+            StatusMessage = "プレビュー中です。「適用」で確定、「プレビュー破棄」で破棄します。";
         }
         catch (Exception ex)
         {
@@ -270,6 +337,17 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             IsPreviewing = false;
             StatusMessage = $"プレビューに失敗しました: {ex.Message}";
         }
+    }
+
+    private void CancelPreview()
+    {
+        if (_gateway is null)
+        {
+            return;
+        }
+
+        DiscardPreview();
+        StatusMessage = "プレビューを破棄しました。";
     }
 
     private void Apply()
@@ -281,6 +359,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
         try
         {
+            // プレビューで working copy に入れた補正は必ず破棄してから
+            // 改めて 1 回だけ適用する (二重適用の防止)。
+            DiscardPreview();
+
             var applied = _gateway.ApplyCorrection(_pendingCorrection);
             if (!_gateway.Commit())
             {
@@ -289,8 +371,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 return;
             }
 
-            _gateway.HidePreview();
-            IsPreviewing = false;
             _lastApplied = applied;
             StatusMessage = "補正を適用しました。";
             UndoCommand.RaiseCanExecuteChanged();
@@ -352,6 +432,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         ClearPointsCommand.RaiseCanExecuteChanged();
         PreviewCommand.RaiseCanExecuteChanged();
         ApplyCommand.RaiseCanExecuteChanged();
+        CancelPreviewCommand.RaiseCanExecuteChanged();
         UndoCommand.RaiseCanExecuteChanged();
         OnPropertyChanged(nameof(CanApply));
     }

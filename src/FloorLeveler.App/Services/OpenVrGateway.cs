@@ -34,7 +34,7 @@ public sealed class OpenVrGateway : ISessionGateway
             .Select(d => new GatewayDevice(d.Index, d.DeviceClass.ToString(), d.ModelNumber, d.SerialNumber))
             .ToArray();
 
-    public Vector3? GetDevicePosition(uint deviceIndex)
+    public RigidTransform? GetDevicePose(uint deviceIndex)
     {
         var poses = _session.System.GetPoses(ETrackingUniverseOrigin.Standing);
         if (deviceIndex >= poses.Length)
@@ -48,8 +48,7 @@ public sealed class OpenVrGateway : ISessionGateway
             return null;
         }
 
-        var t = pose.DeviceToAbsoluteTracking.ToRigidTransform();
-        return t.Translation;
+        return pose.DeviceToAbsoluteTracking.ToRigidTransform();
     }
 
     public RigidTransform GetStandingZeroPose()
