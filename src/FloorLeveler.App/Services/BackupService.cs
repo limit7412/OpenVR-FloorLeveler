@@ -60,8 +60,17 @@ public sealed class BackupService
         while (true)
         {
             var seq = Interlocked.Increment(ref _sequence);
-            var name = $"{stamp}-{seq:D9}-{kindTag}.json";
-            var path = Path.Combine(_directory, name);
+            var prefix = $"{stamp}-{seq:D9}-";
+
+            // 種別非依存の一意順序を保つため、同じ seq が (別プロセス/別種別で)
+            // 既に使われていれば次の連番へ進む。これにより同秒・別種別が同じ seq を
+            // 持ち、種別の文字列順で並んでしまう問題を防ぐ。
+            if (Directory.EnumerateFiles(_directory, prefix + "*.json").Any())
+            {
+                continue;
+            }
+
+            var path = Path.Combine(_directory, $"{prefix}{kindTag}.json");
 
             FileStream stream;
             try
@@ -116,8 +125,10 @@ public sealed class BackupService
                 return [];
             }
 
+            // 並び順は種別を除いた (timestamp, seq) で決める。種別を含めると
+            // 同秒同 seq (万一発生した場合) に種別の文字列順で並んでしまうため。
             return Directory.EnumerateFiles(_directory, "*.json")
-                .OrderByDescending(Path.GetFileName, StringComparer.Ordinal)
+                .OrderByDescending(OrderKey, StringComparer.Ordinal)
                 .Select(ToEntry)
                 .ToArray();
         }
@@ -181,6 +192,13 @@ public sealed class BackupService
         {
             // 後始末の失敗は握りつぶす。
         }
+    }
+
+    /// <summary>並び順キー: 種別を除いた {yyyyMMdd}-{HHmmss}-{seq} (固定幅で辞書順=時系列順)。</summary>
+    private static string OrderKey(string path)
+    {
+        var parts = Path.GetFileNameWithoutExtension(path).Split('-');
+        return parts.Length >= 3 ? $"{parts[0]}-{parts[1]}-{parts[2]}" : Path.GetFileName(path);
     }
 
     private static BackupEntry ToEntry(string path)

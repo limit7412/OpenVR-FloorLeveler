@@ -82,6 +82,22 @@ public class BackupServiceTests : IDisposable
     }
 
     [Fact]
+    public void Save_TwoInstances_SameSecond_KeepSaveOrder()
+    {
+        // 2 インスタンスが同じディレクトリを共有し同一秒に別種別を保存しても、
+        // seq が種別非依存で一意になり、後から保存した方が最新になる。
+        var timestamp = new DateTime(2026, 7, 23, 1, 0, 0);
+        var a = new BackupService(_dir);
+        var b = new BackupService(_dir);
+
+        a.Save(Sample(0.01f), timestamp, BackupKind.PreApply);
+        b.Save(Sample(0.02f), timestamp, BackupKind.Manual);
+
+        Assert.Equal(BackupKind.Manual, b.LatestRestorable()!.Kind);
+        Assert.Equal(2, b.List().Count);
+    }
+
+    [Fact]
     public void Save_NewInstance_ContinuesSequenceAcrossRestart()
     {
         // 再起動を模して別インスタンスで同一秒に保存しても、既存の最大連番から

@@ -553,35 +553,25 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        // 新しい順に試し、破損した候補 (保存中断・不完全コピー等) は飛ばして
-        // 次の有効な候補へ進む。UI は「最新」復元のみのため、1 件の破損で
-        // 復旧不能にならないようにする。
-        ChaperoneSnapshot? snapshot = null;
-        BackupEntry? used = null;
+        // 新しい順に試し、破損した候補 (保存中断・不完全コピー・手動編集による
+        // 形状不正など) は飛ばして次の有効な候補へ進む。読み込みだけでなく
+        // working copy への書き戻し (形状検証を含む) までを候補ごとに試すことで、
+        // 構文上は有効だが復元できないファイルもスキップする。
         var skipped = 0;
         foreach (var entry in candidates)
         {
             try
             {
-                snapshot = _backupService.Load(entry.Path);
-                used = entry;
-                break;
+                var snapshot = _backupService.Load(entry.Path);
+                _gateway.RestoreSnapshot(snapshot); // 形状不正はここで例外
             }
             catch
             {
                 skipped++;
+                TryRevert();
+                continue;
             }
-        }
 
-        if (snapshot is null || used is null)
-        {
-            StatusMessage = "有効なバックアップがありませんでした (すべて読み込みに失敗)。";
-            return;
-        }
-
-        try
-        {
-            _gateway.RestoreSnapshot(snapshot);
             if (!_gateway.Commit())
             {
                 _gateway.Revert();
@@ -595,17 +585,27 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             // 点群は写像ではなくクリアする)。
             _points.Clear();
             _lastApplied = null;
-            _log?.Log($"バックアップを復元: {used.Path}" + (skipped > 0 ? $" ({skipped} 件の破損をスキップ)" : string.Empty));
+            _log?.Log($"バックアップを復元: {entry.Path}" + (skipped > 0 ? $" ({skipped} 件の破損をスキップ)" : string.Empty));
             Recompute();
             StatusMessage = skipped > 0
-                ? $"バックアップを復元しました: {used.Timestamp} ({skipped} 件の破損をスキップ)"
-                : $"バックアップを復元しました: {used.Timestamp}";
+                ? $"バックアップを復元しました: {entry.Timestamp} ({skipped} 件の破損をスキップ)"
+                : $"バックアップを復元しました: {entry.Timestamp}";
             UndoCommand.RaiseCanExecuteChanged();
+            return;
         }
-        catch (Exception ex)
+
+        StatusMessage = "有効なバックアップがありませんでした (すべて読み込みに失敗)。";
+    }
+
+    private void TryRevert()
+    {
+        try
         {
-            _gateway.Revert();
-            StatusMessage = $"復元に失敗しました: {ex.Message}";
+            _gateway?.Revert();
+        }
+        catch
+        {
+            // 破損候補スキップ時の後始末失敗は無視する。
         }
     }
 
