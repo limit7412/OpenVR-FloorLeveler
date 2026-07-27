@@ -22,7 +22,11 @@ public enum BackupKind
 /// <param name="Path">ファイルの絶対パス。</param>
 /// <param name="Timestamp">ファイル名から復元したタイムスタンプ表示 (yyyyMMdd-HHmmss)。</param>
 /// <param name="Kind">バックアップ種別。</param>
-public sealed record BackupEntry(string Path, string Timestamp, BackupKind Kind)
+/// <param name="Sequence">
+/// ファイル名の保存順連番。同一秒に同種のバックアップが複数あっても一覧で
+/// 区別できるよう、表示にも用いる。
+/// </param>
+public sealed record BackupEntry(string Path, string Timestamp, BackupKind Kind, long Sequence)
 {
     /// <summary>種別の日本語表示。</summary>
     public string KindLabel => Kind switch
@@ -32,8 +36,12 @@ public sealed record BackupEntry(string Path, string Timestamp, BackupKind Kind)
         _ => "手動",
     };
 
-    /// <summary>一覧表示用のラベル (例: "2026-07-27 03:53:19  適用前")。</summary>
-    public string DisplayName => $"{FormatTimestamp(Timestamp)}  {KindLabel}";
+    /// <summary>
+    /// 一覧表示用のラベル (例: "2026-07-27 03:53:19  適用前  #12")。
+    /// 秒単位の日時と種別だけでは同一秒の同種バックアップ (短時間の連続適用で
+    /// 生じる複数の「適用前」など) を区別できないため、保存順の連番も添える。
+    /// </summary>
+    public string DisplayName => $"{FormatTimestamp(Timestamp)}  {KindLabel}  #{Sequence}";
 
     /// <summary>ファイル名由来の詰めた表記を読みやすい日時に整形する (解析できなければ原文)。</summary>
     private static string FormatTimestamp(string raw)
@@ -257,7 +265,8 @@ public sealed class BackupService
         // 形式: {yyyyMMdd}-{HHmmss}-{seq}-{kind}
         var timestamp = parts.Length >= 2 ? $"{parts[0]}-{parts[1]}" : name;
         var kind = parts.Length >= 4 ? ParseKind(parts[3]) : BackupKind.Manual;
-        return new BackupEntry(path, timestamp, kind);
+        var sequence = parts.Length >= 3 && long.TryParse(parts[2], out var seq) ? seq : 0L;
+        return new BackupEntry(path, timestamp, kind, sequence);
     }
 
     private static string KindTag(BackupKind kind) => kind switch

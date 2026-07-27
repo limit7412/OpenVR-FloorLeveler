@@ -40,6 +40,9 @@ internal sealed class FakeSessionGateway : ISessionGateway
     /// <summary>true にすると S→R 取得時に例外を投げる (接続時エラーの再現用)。</summary>
     public bool ThrowOnGetStandingZeroPose { get; set; }
 
+    /// <summary>true にすると Commit が例外を投げる (セッション断の再現用)。</summary>
+    public bool ThrowOnCommit { get; set; }
+
     public int ApplyCount { get; private set; }
 
     public int CommitCount { get; private set; }
@@ -93,6 +96,11 @@ internal sealed class FakeSessionGateway : ISessionGateway
     public bool Commit()
     {
         CommitCount++;
+        if (ThrowOnCommit)
+        {
+            throw new InvalidOperationException("commit failed");
+        }
+
         if (CommitFailCount > 0)
         {
             CommitFailCount--;

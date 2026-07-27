@@ -345,6 +345,41 @@ public class MainViewModelBackupTests : IDisposable
     }
 
     [Fact]
+    public void Backups_SameSecondSameKind_AreDistinguishableInList()
+    {
+        // 同一秒に同種を連続保存しても一覧表示が同一にならない (保存順の連番で区別)。
+        // 表示が同じだとユーザーが意図しない時点を復元し得るため。
+        var gateway = new FakeSessionGateway(TiltedStanding(2f));
+        var vm = Connected(gateway, out _); // クロックは 3:00:00 固定
+        vm.BackupCommand.Execute(null);
+        vm.BackupCommand.Execute(null);
+
+        var manual = vm.Backups.Where(e => e.Kind == BackupKind.Manual).ToArray();
+        Assert.Equal(2, manual.Length);
+        Assert.Equal(manual[0].Timestamp, manual[1].Timestamp); // 秒までは同一
+        Assert.NotEqual(manual[0].Sequence, manual[1].Sequence);
+        Assert.NotEqual(manual[0].DisplayName, manual[1].DisplayName);
+    }
+
+    [Fact]
+    public void RestoreSelected_CommitThrows_RevertsWithoutPropagating()
+    {
+        // commit が例外を投げても UI へ伝播させず、revert して失敗として扱う (NF-5)。
+        var gateway = new FakeSessionGateway(TiltedStanding(2f));
+        var vm = Connected(gateway, out _);
+        vm.BackupCommand.Execute(null);
+        vm.SelectedBackup = vm.Backups[0];
+
+        gateway.ThrowOnCommit = true;
+        var revertsBefore = gateway.RevertCount;
+
+        vm.RestoreSelectedCommand.Execute(null);
+
+        Assert.True(gateway.RevertCount > revertsBefore, "revert されていない");
+        Assert.Contains("復元できませんでした", vm.StatusMessage);
+    }
+
+    [Fact]
     public void RefreshBackups_KeepsSelectionWhenEntryStillExists()
     {
         var gateway = new FakeSessionGateway(TiltedStanding(2f));

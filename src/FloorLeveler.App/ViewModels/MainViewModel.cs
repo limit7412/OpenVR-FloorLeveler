@@ -766,14 +766,25 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             return false;
         }
 
-        if (!_gateway.Commit())
+        try
         {
-            // Live 反映が拒否された場合も候補固有の失敗として扱う。
-            _gateway.Revert();
+            if (_gateway.Commit())
+            {
+                return true;
+            }
+        }
+        catch
+        {
+            // commit 自体が例外を投げた場合 (セッション断など) も候補固有の失敗として
+            // 扱う。ここで捕捉しないと revert されないまま UI へ例外が伝播し、選択した
+            // スナップショットが working copy に残ってしまう (仕様 NF-5)。
+            TryRevert();
             return false;
         }
 
-        return true;
+        // Live 反映が拒否された場合も候補固有の失敗として扱う。
+        TryRevert();
+        return false;
     }
 
     /// <summary>復元成功後の状態初期化と通知。</summary>
