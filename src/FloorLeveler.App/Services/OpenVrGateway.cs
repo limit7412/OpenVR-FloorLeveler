@@ -25,7 +25,8 @@ public sealed class OpenVrGateway : ISessionGateway
         catch (DllNotFoundException ex)
         {
             throw new SessionUnavailableException(
-                "openvr_api.dll が見つかりません。SteamVR をインストールしてください。", ex);
+                "openvr_api.dll が見つかりません。SteamVR をインストールするか、" +
+                "FloorLeveler.exe と同じディレクトリに openvr_api.dll を置いてください。", ex);
         }
     }
 

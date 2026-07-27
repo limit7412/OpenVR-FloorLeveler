@@ -64,8 +64,25 @@ dotnet publish src/FloorLeveler.App -c Release -r win-x64 --self-contained \
 ```
 
 `publish/FloorLeveler.exe` (約 48 MB) が生成される。CI でもサイズ予算
-(NF-2: 60 MB 以下) を検証している。実行には `openvr_api.dll` が exe と
-同じディレクトリに必要 (exe への内包は今後対応)。
+(NF-2: 60 MB 以下) を検証している。
+
+### openvr_api.dll の扱い (仕様 §8.2)
+
+`openvr_api.dll` は exe に内包せず、実行時に次の順で探す (`OpenVrNativeLibrary`)。
+
+1. **既定の探索** — exe と同じディレクトリ、または OS の検索パス。
+   任意のバージョンを使いたい場合は exe の隣に置けばそちらが優先される
+2. **SteamVR 付属のもの** — 上で見つからない場合、OpenVR ランタイムと同じ規約で
+   `<ランタイム>\bin\win64\openvr_api.dll` を探す (`OpenVrRuntimeLocator`)
+   - `VR_OVERRIDE` — ランタイムのルートを直接指定する環境変数
+   - `openvrpaths.vrpath` の `runtime` — SteamVR が書き出す設定ファイル。場所は
+     `VR_PATHREG_OVERRIDE`、既定では `%LOCALAPPDATA%\openvr\`
+
+どちらでも見つからない場合は `DllNotFoundException` になり、GUI には
+SteamVR のインストールか dll の併置を促すメッセージが出る。
+
+SteamVR が入っていれば dll を用意する必要はなく、exe 単体で動作する。
+本ツールは `openvr_api.dll` を再配布しない。
 
 `FloorLeveler.exe --version` はバージョンを出力して終了する (GUI を起動しない)。
 発行時に `-p:Version=1.2.3` を渡すと、その値が exe のファイルプロパティ
