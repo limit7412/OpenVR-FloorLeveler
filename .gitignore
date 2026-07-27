@@ -5,3 +5,6 @@ obj/
 .idea/
 artifacts/
 TestResults/
+# exe 内包用に取得する openvr_api.dll (仕様 §8.2)。バイナリはコミットせず、
+# scripts/fetch-openvr-dll.sh でピン留めしたバージョンを取得する。
+native/

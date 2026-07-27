@@ -25,6 +25,10 @@ public sealed class OpenVrSession : IDisposable
     /// </summary>
     public static OpenVrSession Connect()
     {
+        // 内包した openvr_api.dll を解決できるようにする (仕様 §8.2)。
+        // 最初の P/Invoke より前に呼ぶ必要がある。
+        OpenVrNativeLibrary.Register();
+
         var error = 0;
         NativeMethods.VR_InitInternal2(ref error, EVRApplicationType.Utility, null);
         if (error != 0)
@@ -50,9 +54,17 @@ public sealed class OpenVrSession : IDisposable
         }
     }
 
-    public static bool IsRuntimeInstalled() => NativeMethods.VR_IsRuntimeInstalled();
+    public static bool IsRuntimeInstalled()
+    {
+        OpenVrNativeLibrary.Register();
+        return NativeMethods.VR_IsRuntimeInstalled();
+    }
 
-    public static bool IsHmdPresent() => NativeMethods.VR_IsHmdPresent();
+    public static bool IsHmdPresent()
+    {
+        OpenVrNativeLibrary.Register();
+        return NativeMethods.VR_IsHmdPresent();
+    }
 
     private static void EnsureInterfaceVersion(string version)
     {

@@ -28,6 +28,8 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+      - name: Fetch openvr_api.dll (exe 内包用, 仕様 §8.2)
+        run: bash scripts/fetch-openvr-dll.sh
       - name: Publish single-file exe (win-x64)
         run: >
           dotnet publish src/FloorLeveler.App -c Release -r win-x64 --self-contained

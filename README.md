@@ -56,6 +56,9 @@ dotnet test
 ## 単一 exe の発行 (仕様 §8)
 
 ```bash
+# openvr_api.dll を exe に内包する場合 (仕様 §8.2)。省略も可 (下記参照)。
+./scripts/fetch-openvr-dll.sh
+
 dotnet publish src/FloorLeveler.App -c Release -r win-x64 --self-contained \
   -p:PublishSingleFile=true \
   -p:IncludeNativeLibrariesForSelfExtract=true \
@@ -63,9 +66,24 @@ dotnet publish src/FloorLeveler.App -c Release -r win-x64 --self-contained \
   -o publish
 ```
 
-`publish/FloorLeveler.exe` (約 48 MB) が生成される。CI でもサイズ予算
-(NF-2: 60 MB 以下) を検証している。実行には `openvr_api.dll` が exe と
-同じディレクトリに必要 (exe への内包は今後対応)。
+`publish/FloorLeveler.exe` が生成される。CI でもサイズ予算 (NF-2: 60 MB 以下) を
+検証している。
+
+### openvr_api.dll の扱い (仕様 §8.2)
+
+実行時の解決順は次のとおり (`OpenVrNativeLibrary`)。
+
+1. **既定の探索** — exe と同じディレクトリ、または OS の検索パス。ここで見つかれば
+   そのまま使う (開発時や、任意のバージョンを差し替えたい場合に有効)
+2. **exe への内包** — 見つからない場合、exe に内包した dll を
+   `%LOCALAPPDATA%\FloorLeveler\native\{内容ハッシュ}\` へ展開してロードする
+   (書き込みは `%LOCALAPPDATA%` 配下のみ: NF-3)。内容が同じなら再展開しない
+
+内包は `native/win-x64/openvr_api.dll` が存在するときだけ行われる。`scripts/fetch-openvr-dll.sh`
+がピン留めしたバージョン (既定 `v2.5.1`) を取得し SHA-256 を検証して配置する
+(バイナリはリポジトリにコミットしない)。このファイルを置かずにビルドした場合は
+内包されず、実行時は 1. の探索のみになる。リリース (§8.4) では必ず取得してから
+発行するため、配布 exe は単体で動作する (NF-1)。
 
 `FloorLeveler.exe --version` はバージョンを出力して終了する (GUI を起動しない)。
 発行時に `-p:Version=1.2.3` を渡すと、その値が exe のファイルプロパティ

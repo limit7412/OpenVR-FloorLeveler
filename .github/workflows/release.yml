@@ -44,6 +44,12 @@ jobs:
       - name: Test
         run: dotnet test --configuration Release
 
+      # 単一 exe (NF-1) にするため、内包する openvr_api.dll を取得する (仕様 §8.2)。
+      # バージョンと SHA-256 はスクリプト側でピン留めし、取得後に検証する。
+      - name: Fetch openvr_api.dll (exe 内包用)
+        shell: bash
+        run: bash scripts/fetch-openvr-dll.sh
+
       - name: Publish single-file exe (win-x64)
         run: >
           dotnet publish src/FloorLeveler.App -c Release -r win-x64 --self-contained
@@ -103,11 +109,11 @@ jobs:
           cat > release-notes.md <<'EOF'
           ## インストール
 
-          `FloorLeveler.exe` をダウンロードして実行してください (インストーラー不要)。
+          `FloorLeveler.exe` をダウンロードして実行してください。インストーラーも
+          追加の DLL 配置も不要です (`openvr_api.dll` は exe に内包しており、
+          必要なときだけ `%LOCALAPPDATA%\FloorLeveler\native` へ展開して読み込みます)。
 
-          > **注意**: 現時点では `openvr_api.dll` (SteamVR 同梱の `bin\win64`、または
-          > OpenVR のリリース) を `FloorLeveler.exe` と同じディレクトリに配置する必要が
-          > あります。dll の exe 内包 (仕様 §8.2) は今後対応予定です。
+          exe と同じディレクトリに `openvr_api.dll` を置いた場合は、そちらが優先されます。
 
           動作環境: Windows 10 22H2 以降 / Windows 11 (x64)、SteamVR 起動中。
           EOF

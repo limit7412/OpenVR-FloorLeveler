@@ -15,4 +15,17 @@
     <InternalsVisibleTo Include="FloorLeveler.OpenVr.Tests" />
   </ItemGroup>
 
+  <!-- openvr_api.dll の exe 内包 (仕様 §8.2)。native/win-x64/openvr_api.dll が
+       置かれている場合だけ埋め込む (取得は scripts/fetch-openvr-dll.sh)。
+       無い場合は埋め込まずビルドが通り、実行時は exe と同じディレクトリ /
+       OS の検索パスから読み込む従来動作になる。 -->
+  <PropertyGroup>
+    <OpenVrApiDllPath Condition="'$(OpenVrApiDllPath)' == ''">$(MSBuildThisFileDirectory)..\..\native\win-x64\openvr_api.dll</OpenVrApiDllPath>
+  </PropertyGroup>
+
+  <ItemGroup Condition="Exists('$(OpenVrApiDllPath)')">
+    <EmbeddedResource Include="$(OpenVrApiDllPath)"
+                      LogicalName="FloorLeveler.OpenVr.native.win-x64.openvr_api.dll" />
+  </ItemGroup>
+
 </Project>
