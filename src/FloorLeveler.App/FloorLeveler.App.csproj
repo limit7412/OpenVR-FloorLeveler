@@ -10,6 +10,10 @@
     <DebugType>embedded</DebugType>
     <!-- 単一 exe 発行 (仕様 §8.2) の対象 RID。発行は README の手順を参照。 -->
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <!-- タグ駆動バージョン (仕様 §8.4)。リリースは p:Version にタグの値を渡して発行する。
+         コミットハッシュを InformationalVersion に混ぜると exe のファイルプロパティ
+         (ProductVersion) やバージョン出力がタグと一致しなくなるため抑止する。 -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
