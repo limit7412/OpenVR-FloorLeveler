@@ -30,6 +30,13 @@ public sealed record FloorPlot(
 public static class FloorProjection
 {
     /// <summary>
+    /// これ未満の法線 Y 成分を持つ平面は「ほぼ垂直」とみなし、側面ビューに断面線を
+    /// 描かない (床として無意味であり、傾き h/Ny の発散を防ぐ)。cos(84°) ≒ 0.1。
+    /// </summary>
+    private const float NearVerticalNormalY = 0.1f;
+
+
+    /// <summary>
     /// 俯瞰ビュー: XZ 平面へ投影する (横=X, 縦=Z)。真上から見た点群の広がりを表す。
     /// </summary>
     public static FloorPlot TopDown(IReadOnlyList<Vector3> points)
@@ -70,12 +77,16 @@ public static class FloorProjection
         }
 
         (Vector2 Start, Vector2 End)? line = null;
-        if (plane is { } pl)
+        // 法線がほぼ水平 (=平面がほぼ垂直) な場合は床とみなさず断面線を描かない。
+        // Ny→0 では傾き h/Ny が発散し、tan(90°) の浮動小数点近似が巨大で符号も不定な
+        // 有限値になって側面ビューを潰してしまうため (床としても無意味なデータ)。
+        if (plane is { } pl && pl.Normal.Y >= NearVerticalNormalY)
         {
             // 断面線は u=0 (重心) で y=重心高さを通り、傾き -tan(tilt) の直線。
-            // 導出: 平面上の点は u·h + (y-cy)·Ny = 0 を満たし、h=sqrt(Nx^2+Nz^2)、
-            // tan(tilt)=h/Ny なので y = cy - tan(tilt)·u。
-            var slope = -MathF.Tan(pl.TiltAngleDegrees * (MathF.PI / 180f));
+            // 導出: 平面上の点は u·h + (y-cy)·Ny = 0 を満たし、h=sqrt(Nx^2+Nz^2) なので
+            // y = cy - (h/Ny)·u。tan を経由せず法線から直接算出する (Ny は上でガード済み)。
+            var h = MathF.Sqrt((pl.Normal.X * pl.Normal.X) + (pl.Normal.Z * pl.Normal.Z));
+            var slope = -h / pl.Normal.Y;
             var (uMin, uMax) = HorizontalSpan(projected);
             line = (
                 new Vector2(uMin, pl.Centroid.Y + slope * uMin),

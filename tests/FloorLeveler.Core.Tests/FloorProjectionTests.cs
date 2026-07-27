@@ -81,6 +81,22 @@ public class FloorProjectionTests
     }
 
     [Fact]
+    public void Side_NearVerticalPlane_OmitsFloorLine()
+    {
+        // 垂直面 (x=0) 上に分布した点。法線は (1,0,0) で Ny=0、傾き 90°。
+        // tan(90°) の発散で巨大な斜線を描かないよう、床線は省略する。
+        var points = Grid((y, z) => new Vector3(0f, y, z));
+        var plane = PlaneFit.Fit(points);
+
+        Assert.True(MathF.Abs(plane.Normal.Y) < 0.1f, $"Ny={plane.Normal.Y}");
+
+        var plot = FloorProjection.Side(points, plane);
+
+        Assert.Null(plot.FloorLine);       // 床線は描かない
+        Assert.Equal(points.Length, plot.Points.Count); // 点群自体は投影される
+    }
+
+    [Fact]
     public void Side_NoPlane_ProjectsPointsButNoFloorLine()
     {
         // 平面推定前 (2 点) は床線を返さない。
