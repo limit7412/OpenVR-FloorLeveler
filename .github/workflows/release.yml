@@ -116,6 +116,42 @@ jobs:
           exe と同じディレクトリに `openvr_api.dll` を置いた場合は、そちらが優先されます。
 
           動作環境: Windows 10 22H2 以降 / Windows 11 (x64)、SteamVR 起動中。
+
+          ## サードパーティ ライセンス
+
+          本配布物には Valve Corporation の OpenVR SDK (`openvr_api.dll`, BSD 3-Clause)
+          を含みます。著作権表示・ライセンス条件・免責条項の全文は、同梱の
+          `THIRD-PARTY-NOTICES.md` を参照してください。
+
+          ```
+          Copyright (c) 2015, Valve Corporation
+          All rights reserved.
+
+          Redistribution and use in source and binary forms, with or without modification,
+          are permitted provided that the following conditions are met:
+
+          1. Redistributions of source code must retain the above copyright notice, this
+          list of conditions and the following disclaimer.
+
+          2. Redistributions in binary form must reproduce the above copyright notice,
+          this list of conditions and the following disclaimer in the documentation and/or
+          other materials provided with the distribution.
+
+          3. Neither the name of the copyright holder nor the names of its contributors
+          may be used to endorse or promote products derived from this software without
+          specific prior written permission.
+
+          THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+          ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+          WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+          DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+          ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+          (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+          LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+          ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+          (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+          SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+          ```
           EOF
 
       - name: Create release
@@ -127,4 +163,7 @@ jobs:
           if [ "${{ steps.version.outputs.prerelease }}" = "true" ]; then
             flags+=(--prerelease)
           fi
-          gh release create "$GITHUB_REF_NAME" publish/FloorLeveler.exe "${flags[@]}"
+          # ライセンス通知も添付する (openvr_api.dll の BSD 3-Clause がバイナリ再配布に
+          # 際して要求する著作権表示・条件・免責条項を配布物に含めるため)。
+          gh release create "$GITHUB_REF_NAME" \
+            publish/FloorLeveler.exe THIRD-PARTY-NOTICES.md "${flags[@]}"

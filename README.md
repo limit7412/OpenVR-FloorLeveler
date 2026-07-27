@@ -85,6 +85,11 @@ dotnet publish src/FloorLeveler.App -c Release -r win-x64 --self-contained \
 内包されず、実行時は 1. の探索のみになる。リリース (§8.4) では必ず取得してから
 発行するため、配布 exe は単体で動作する (NF-1)。
 
+内包した `openvr_api.dll` は Valve Corporation の OpenVR SDK (BSD 3-Clause) であり、
+バイナリ再配布にあたって著作権表示・ライセンス条件・免責条項の添付が必要になる。
+全文は [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) にあり、リリース (§8.4) では
+Release の資産としても添付し、リリースノートにも記載する。
+
 `FloorLeveler.exe --version` はバージョンを出力して終了する (GUI を起動しない)。
 発行時に `-p:Version=1.2.3` を渡すと、その値が exe のファイルプロパティ
 (ProductVersion) と `--version` の出力になる。

@@ -62,6 +62,34 @@ public class NativeLibraryExtractorTests : IDisposable
     }
 
     [Fact]
+    public void EnsureExtracted_CorruptedExistingFile_SameLength_IsRewritten()
+    {
+        // 長さが同じでも中身が違えば展開し直す。長さだけの確認では、破損・差し替え
+        // された dll をロードし続けてしまうため。
+        var path = NativeLibraryExtractor.EnsureExtracted(Payload("fake-dll"), _root, "openvr_api.dll");
+        File.WriteAllText(path, "FAKE-DLL"); // 8 バイトのまま内容だけ変える
+
+        var again = NativeLibraryExtractor.EnsureExtracted(Payload("fake-dll"), _root, "openvr_api.dll");
+
+        Assert.Equal(path, again);
+        Assert.Equal("fake-dll", File.ReadAllText(again));
+    }
+
+    [Fact]
+    public void EnsureExtracted_Concurrently_ProducesOneConsistentFile()
+    {
+        // 同一ペイロードを複数スレッドから同時に展開しても、最終的に 1 つの
+        // 正しいファイルへ収束すること (一時ファイルは Guid で衝突しない)。
+        var results = new string[16];
+        Parallel.For(0, results.Length, i =>
+            results[i] = NativeLibraryExtractor.EnsureExtracted(Payload("fake-dll"), _root, "openvr_api.dll"));
+
+        Assert.Single(results.Distinct(StringComparer.Ordinal));
+        Assert.Equal("fake-dll", File.ReadAllText(results[0]));
+        Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(results[0])!, "*.tmp"));
+    }
+
+    [Fact]
     public void EnsureExtracted_NonSeekablePayload_IsSupported()
     {
         // 埋め込みリソース以外 (シーク不可のストリーム) でも扱えること。
@@ -138,6 +166,15 @@ public class OpenVrNativeLibraryTests
         // 何度呼んでも解決子の登録は 1 回だけ (2 回目以降で例外にならないこと)。
         OpenVrNativeLibrary.Register();
         OpenVrNativeLibrary.Register();
+    }
+
+    [Fact]
+    public void Register_FromMultipleThreads_RegistersOnce()
+    {
+        // 複数スレッドから同時に呼んでも SetDllImportResolver は 1 回だけ
+        // (2 回目は InvalidOperationException になるため、直列化できていないと落ちる)。
+        // かつ戻った時点で登録は完了している (登録前に P/Invoke へ進ませない)。
+        Parallel.For(0, 32, _ => OpenVrNativeLibrary.Register());
     }
 
     [Fact]

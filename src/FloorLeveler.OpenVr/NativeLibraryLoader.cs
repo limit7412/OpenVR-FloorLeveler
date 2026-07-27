@@ -21,7 +21,16 @@ public static class OpenVrNativeLibrary
 
     private static readonly Assembly Self = typeof(OpenVrNativeLibrary).Assembly;
 
-    private static int _registered;
+    // 解決子の登録は 1 回だけ (2 回目の SetDllImportResolver は例外)。かつ登録が
+    // 完了するまで他スレッドを通さない必要があるため Lazy で直列化する。フラグを
+    // 先に立てる方式では、登録前に別スレッドが P/Invoke へ進み得る。
+    private static readonly Lazy<bool> Registration = new(
+        () =>
+        {
+            NativeLibrary.SetDllImportResolver(Self, Resolve);
+            return true;
+        },
+        LazyThreadSafetyMode.ExecutionAndPublication);
 
     /// <summary>openvr_api.dll を内包したビルドかどうか。</summary>
     public static bool HasEmbeddedLibrary
@@ -29,17 +38,10 @@ public static class OpenVrNativeLibrary
 
     /// <summary>
     /// DllImport の解決子を登録する。最初の P/Invoke より前に呼ぶこと。
-    /// 複数回呼んでも登録は 1 回だけ (2 回目以降は何もしない)。
+    /// 複数回・複数スレッドから呼んでも登録は 1 回だけで、登録が完了するまで
+    /// 呼び出し側は戻らない (登録前に P/Invoke へ進ませないため)。
     /// </summary>
-    public static void Register()
-    {
-        if (Interlocked.Exchange(ref _registered, 1) != 0)
-        {
-            return;
-        }
-
-        NativeLibrary.SetDllImportResolver(Self, Resolve);
-    }
+    public static void Register() => _ = Registration.Value;
 
     /// <summary>展開先のルート。書き込みは %LOCALAPPDATA% 配下のみ (仕様 NF-3)。</summary>
     internal static string ExtractionRoot => Path.Combine(
@@ -100,12 +102,13 @@ internal static class NativeLibraryExtractor
         ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
 
         var (hash, length) = Fingerprint(openPayload);
-        var directory = Path.Combine(rootDirectory, hash);
+        var directory = Path.Combine(rootDirectory, hash[..DirectoryNameLength]);
         var target = Path.Combine(directory, fileName);
 
-        // ディレクトリ名が内容ハッシュなので、長さが一致すれば同じ内容とみなせる
-        // (長さ違いは書き出し途中で終わった残骸)。
-        if (IsUsable(target, length))
+        // 再利用前に内容ハッシュまで照合する。ディレクトリ名はあくまで期待値であり、
+        // 中身が破損・差し替えされていないことは保証しないため (長さ一致でも中身が
+        // 違えば壊れた dll を毎回ロードし続けることになる)。
+        if (IsUpToDate(target, length, hash))
         {
             return target;
         }
@@ -123,7 +126,7 @@ internal static class NativeLibraryExtractor
             // 一時ファイルへ書き切ってから差し替える (部分ファイルをロードしないため)。
             File.Move(temp, target, overwrite: true);
         }
-        catch (IOException) when (IsUsable(target, length))
+        catch (IOException) when (IsUpToDate(target, length, hash))
         {
             // 別プロセスが先に展開済み (実行中でロックされている場合を含む)。
             TryDelete(temp);
@@ -137,11 +140,24 @@ internal static class NativeLibraryExtractor
         return target;
     }
 
-    private static bool IsUsable(string path, long expectedLength)
+    /// <summary>展開先ディレクトリ名に使うハッシュの文字数。</summary>
+    private const int DirectoryNameLength = 32;
+
+    /// <summary>
+    /// 展開済みファイルが期待どおりか (長さと内容ハッシュの両方が一致するか)。
+    /// 長さを先に見て、違えばハッシュ計算を省く。
+    /// </summary>
+    private static bool IsUpToDate(string path, long expectedLength, string expectedHash)
     {
         try
         {
-            return File.Exists(path) && new FileInfo(path).Length == expectedLength;
+            if (!File.Exists(path) || new FileInfo(path).Length != expectedLength)
+            {
+                return false;
+            }
+
+            using var stream = File.OpenRead(path);
+            return string.Equals(ToHex(SHA256.HashData(stream)), expectedHash, StringComparison.Ordinal);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -149,7 +165,7 @@ internal static class NativeLibraryExtractor
         }
     }
 
-    /// <summary>ペイロードの内容ハッシュ (16 進 32 文字) と長さ。</summary>
+    /// <summary>ペイロードの内容ハッシュ (16 進) と長さ。</summary>
     private static (string Hash, long Length) Fingerprint(Func<Stream> openPayload)
     {
         using var stream = openPayload();
@@ -157,17 +173,16 @@ internal static class NativeLibraryExtractor
         if (stream.CanSeek)
         {
             var length = stream.Length;
-            return (ToDirectoryName(SHA256.HashData(stream)), length);
+            return (ToHex(SHA256.HashData(stream)), length);
         }
 
         using var buffer = new MemoryStream();
         stream.CopyTo(buffer);
         buffer.Position = 0;
-        return (ToDirectoryName(SHA256.HashData(buffer)), buffer.Length);
+        return (ToHex(SHA256.HashData(buffer)), buffer.Length);
     }
 
-    private static string ToDirectoryName(byte[] hash)
-        => Convert.ToHexString(hash).ToLowerInvariant()[..32];
+    private static string ToHex(byte[] hash) => Convert.ToHexString(hash).ToLowerInvariant();
 
     private static void TryDelete(string path)
     {
