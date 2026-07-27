@@ -20,19 +20,18 @@ public class AppVersionTests
     }
 
     [Fact]
-    public void Format_DropsBuildMetadata()
+    public void Format_KeepsBuildMetadataVerbatim()
     {
-        // SourceLink 等が付ける "+コミットハッシュ" は表示しない
-        // (exe のファイルプロパティやタグと突き合わせられるようにするため)。
-        Assert.Equal("1.2.3", AppVersion.Format("1.2.3+abc1234", new Version(1, 2, 3, 0)));
-        Assert.Equal("1.2.3-rc.1", AppVersion.Format("1.2.3-rc.1+abc1234", new Version(1, 2, 3, 0)));
+        // 埋め込まれた値を加工しない。除去すると exe のファイルプロパティやタグと
+        // 表示が食い違い、スモークテストやリリース表示がずれるため。
+        Assert.Equal("1.2.3+build.1", AppVersion.Format("1.2.3+build.1", new Version(1, 2, 3, 0)));
+        Assert.Equal("1.2.3-rc.1+abc1234", AppVersion.Format("1.2.3-rc.1+abc1234", new Version(1, 2, 3, 0)));
     }
 
     [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    [InlineData("+abc1234")] // メタデータのみでバージョン本体が無い
     public void Format_FallsBackToAssemblyVersion(string? informational)
     {
         Assert.Equal("4.5.6.0", AppVersion.Format(informational, new Version(4, 5, 6, 0)));

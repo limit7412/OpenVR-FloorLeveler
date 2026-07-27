@@ -25,8 +25,13 @@ jobs:
         run: |
           # v1.2.3 → 1.2.3 / v1.2.3-rc.1 → 1.2.3-rc.1
           version="${GITHUB_REF_NAME#v}"
-          if [ -z "$version" ]; then
-            echo "タグからバージョンを取得できません: $GITHUB_REF_NAME" >&2
+          # 対応しないタグ形式は事前に拒否する。ビルドメタデータ (+build.1) を含むタグは
+          # MSBuild の Version としての扱いが環境依存で、埋め込まれる値とタグが食い違った
+          # まま公開され得るため受け付けない。
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "対応していないタグ形式です: $GITHUB_REF_NAME" >&2
+            echo "対応形式: vMAJOR.MINOR.PATCH[-プレリリース識別子] (例: v1.2.3, v1.2.3-rc.1)" >&2
+            echo "ビルドメタデータ (+build.1) を含むタグには対応していません。" >&2
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -63,24 +68,33 @@ jobs:
           $ErrorActionPreference = 'Stop'
 
           # (1) exe が起動し --version が正常終了すること。
-          $stdout = (& ./publish/FloorLeveler.exe --version 2>&1 | Out-String).Trim()
-          if ($LASTEXITCODE -ne 0) {
-            throw "--version が異常終了しました (exit=$LASTEXITCODE): $stdout"
+          #     WinExe はコンソール非接続だと標準出力が捨てられるため、ファイルへ明示的に
+          #     リダイレクトして確実に取得する (有効なハンドルを継承させる)。
+          $proc = Start-Process -FilePath ./publish/FloorLeveler.exe -ArgumentList '--version' `
+            -NoNewWindow -Wait -PassThru `
+            -RedirectStandardOutput version.out -RedirectStandardError version.err
+          $stderr = (Get-Content version.err -Raw -ErrorAction SilentlyContinue)
+          if ($proc.ExitCode -ne 0) {
+            throw "--version が異常終了しました (exit=$($proc.ExitCode)): $stderr"
           }
 
-          # (2) exe のファイルプロパティにタグのバージョンが埋まっていること (仕様 §8.4)。
+          # (2) --version が実際にバージョンを出力すること (README が保証する挙動)。
+          #     出力が空なら失敗させる。
+          $stdout = (Get-Content version.out -Raw -ErrorAction SilentlyContinue)
+          $stdout = if ($null -eq $stdout) { '' } else { $stdout.Trim() }
+          if (-not $stdout) {
+            throw "--version が何も出力しませんでした (stderr: $stderr)"
+          }
+          if ($stdout -ne $env:EXPECTED) {
+            throw "--version の出力が不一致: expected $env:EXPECTED, got $stdout"
+          }
+
+          # (3) exe のファイルプロパティにもタグのバージョンが埋まっていること (仕様 §8.4)。
           #     ProductVersion は InformationalVersion 由来。
           $product = (Get-Item ./publish/FloorLeveler.exe).VersionInfo.ProductVersion.Trim()
-          Write-Host "ProductVersion = $product / --version => '$stdout'"
+          Write-Host "--version => '$stdout' / ProductVersion = $product"
           if ($product -ne $env:EXPECTED) {
             throw "ファイルプロパティのバージョン不一致: expected $env:EXPECTED, got $product"
-          }
-
-          # (3) 標準出力が取れた場合は内容も一致すること。
-          #     WinExe はコンソール非接続だと出力が空になり得るため、空は失敗にしない
-          #     ((1)(2) で起動とバージョン埋め込みは確認済み)。
-          if ($stdout -and $stdout -ne $env:EXPECTED) {
-            throw "--version の出力が不一致: expected $env:EXPECTED, got $stdout"
           }
 
       - name: Write release notes

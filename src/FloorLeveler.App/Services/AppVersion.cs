@@ -22,10 +22,12 @@ public static class AppVersion
     }
 
     /// <summary>
-    /// 表示用バージョンを組み立てる (純粋部分)。プレリリース識別子 (1.2.3-rc.1) を
-    /// 保持するため InformationalVersion を優先し、SourceLink 等が付ける
-    /// "+{コミットハッシュ}" のビルドメタデータは落とす。取れない場合はアセンブリ
-    /// バージョン、それも無ければ "0.0.0"。
+    /// 表示用バージョンを組み立てる (純粋部分)。プレリリース識別子 (1.2.3-rc.1) や
+    /// ビルドメタデータ (1.2.3+build.1) はアセンブリバージョンでは失われるため、
+    /// InformationalVersion を優先して<em>そのまま</em>返す。埋め込まれた値を加工すると
+    /// exe のファイルプロパティやタグと表示が食い違うため、除去は行わない
+    /// (コミットハッシュの自動付与は csproj の IncludeSourceRevisionInInformationalVersion
+    /// で抑止済み)。取れない場合はアセンブリバージョン、それも無ければ "0.0.0"。
     /// </summary>
     /// <param name="informationalVersion">AssemblyInformationalVersion の値。</param>
     /// <param name="assemblyVersion">アセンブリバージョン (フォールバック)。</param>
@@ -33,12 +35,7 @@ public static class AppVersion
     {
         if (!string.IsNullOrWhiteSpace(informationalVersion))
         {
-            var plus = informationalVersion.IndexOf('+', StringComparison.Ordinal);
-            var trimmed = (plus >= 0 ? informationalVersion[..plus] : informationalVersion).Trim();
-            if (trimmed.Length > 0)
-            {
-                return trimmed;
-            }
+            return informationalVersion.Trim();
         }
 
         return assemblyVersion?.ToString() ?? "0.0.0";
