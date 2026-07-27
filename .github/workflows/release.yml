@@ -1,0 +1,110 @@
+name: Release
+
+# タグ駆動リリース (仕様 §8.4)。`v1.2.3` のようなタグを push すると、
+# 単一 exe を発行 → スモークテスト → GitHub Release へ添付する。
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # Release の作成と成果物添付に必要
+
+jobs:
+  release:
+    # win-x64 の exe をその場で起動してスモークテストするため Windows で実行する。
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Derive version from tag
+        id: version
+        shell: bash
+        run: |
+          # v1.2.3 → 1.2.3 / v1.2.3-rc.1 → 1.2.3-rc.1
+          version="${GITHUB_REF_NAME#v}"
+          if [ -z "$version" ]; then
+            echo "タグからバージョンを取得できません: $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # プレリリース識別子 (1.2.3-rc.1) を含む場合は Release も prerelease にする。
+          case "$version" in
+            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *)   echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Test
+        run: dotnet test --configuration Release
+
+      - name: Publish single-file exe (win-x64)
+        run: >
+          dotnet publish src/FloorLeveler.App -c Release -r win-x64 --self-contained
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true
+          -p:Version=${{ steps.version.outputs.version }}
+          -o publish
+
+      - name: Check size budget (NF-2, 60MB 以下)
+        shell: bash
+        run: |
+          size=$(stat -c%s publish/FloorLeveler.exe)
+          echo "FloorLeveler.exe: $((size / 1024 / 1024)) MB"
+          test "$size" -le $((60 * 1024 * 1024))
+
+      - name: Smoke test (exe 起動と --version)
+        shell: pwsh
+        env:
+          EXPECTED: ${{ steps.version.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          # (1) exe が起動し --version が正常終了すること。
+          $stdout = (& ./publish/FloorLeveler.exe --version 2>&1 | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0) {
+            throw "--version が異常終了しました (exit=$LASTEXITCODE): $stdout"
+          }
+
+          # (2) exe のファイルプロパティにタグのバージョンが埋まっていること (仕様 §8.4)。
+          #     ProductVersion は InformationalVersion 由来。
+          $product = (Get-Item ./publish/FloorLeveler.exe).VersionInfo.ProductVersion.Trim()
+          Write-Host "ProductVersion = $product / --version => '$stdout'"
+          if ($product -ne $env:EXPECTED) {
+            throw "ファイルプロパティのバージョン不一致: expected $env:EXPECTED, got $product"
+          }
+
+          # (3) 標準出力が取れた場合は内容も一致すること。
+          #     WinExe はコンソール非接続だと出力が空になり得るため、空は失敗にしない
+          #     ((1)(2) で起動とバージョン埋め込みは確認済み)。
+          if ($stdout -and $stdout -ne $env:EXPECTED) {
+            throw "--version の出力が不一致: expected $env:EXPECTED, got $stdout"
+          }
+
+      - name: Write release notes
+        shell: bash
+        run: |
+          cat > release-notes.md <<'EOF'
+          ## インストール
+
+          `FloorLeveler.exe` をダウンロードして実行してください (インストーラー不要)。
+
+          > **注意**: 現時点では `openvr_api.dll` (SteamVR 同梱の `bin\win64`、または
+          > OpenVR のリリース) を `FloorLeveler.exe` と同じディレクトリに配置する必要が
+          > あります。dll の exe 内包 (仕様 §8.2) は今後対応予定です。
+
+          動作環境: Windows 10 22H2 以降 / Windows 11 (x64)、SteamVR 起動中。
+          EOF
+
+      - name: Create release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          flags=(--title "$GITHUB_REF_NAME" --notes-file release-notes.md --verify-tag)
+          if [ "${{ steps.version.outputs.prerelease }}" = "true" ]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" publish/FloorLeveler.exe "${flags[@]}"

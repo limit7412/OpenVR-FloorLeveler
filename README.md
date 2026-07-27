@@ -66,3 +66,23 @@ dotnet publish src/FloorLeveler.App -c Release -r win-x64 --self-contained \
 `publish/FloorLeveler.exe` (約 48 MB) が生成される。CI でもサイズ予算
 (NF-2: 60 MB 以下) を検証している。実行には `openvr_api.dll` が exe と
 同じディレクトリに必要 (exe への内包は今後対応)。
+
+`FloorLeveler.exe --version` はバージョンを出力して終了する (GUI を起動しない)。
+発行時に `-p:Version=1.2.3` を渡すと、その値が exe のファイルプロパティ
+(ProductVersion) と `--version` の出力になる。
+
+## リリース (仕様 §8.4)
+
+`v` から始まるタグを push すると `.github/workflows/release.yml` が動き、
+タグ駆動でリリースが作られる。
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+ワークフローは Windows ランナー上で テスト → 単一 exe の発行
+(`-p:Version=` にタグの値を渡す) → サイズ予算の確認 → スモークテスト
+(exe を起動して `--version` の正常終了・ファイルプロパティのバージョン一致を確認)
+を行い、`FloorLeveler.exe` を添付した GitHub Release を作成する。
+`v1.2.3-rc.1` のようにプレリリース識別子を含むタグは prerelease として公開される。

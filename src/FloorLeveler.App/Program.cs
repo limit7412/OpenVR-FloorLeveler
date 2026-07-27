@@ -1,4 +1,5 @@
 using Avalonia;
+using FloorLeveler.App.Services;
 
 namespace FloorLeveler.App;
 
@@ -10,8 +11,9 @@ internal static class Program
     {
         if (args.Contains("--version"))
         {
-            // 単一 exe 発行のスモークテスト用 (仕様 §8.4)。
-            Console.WriteLine(typeof(Program).Assembly.GetName().Version?.ToString() ?? "0.0.0");
+            // 単一 exe 発行のスモークテスト用 (仕様 §8.4)。タグ由来のバージョンを
+            // そのまま出力する (プレリリース識別子も保持)。
+            Console.WriteLine(AppVersion.Current);
             return 0;
         }
 
