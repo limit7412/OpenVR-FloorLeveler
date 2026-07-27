@@ -25,6 +25,8 @@ Functional Core / Imperative Shell 構成を採用している。
   OpenVR へのアクセスは `ISessionGateway` の背後に隠し、UI ロジックを実機なしで
   テスト可能にしている。設定 (F-7)・スナップショットのバックアップ/復元 (F-6)・
   ローテーション付きログ (NF-4) を `%LOCALAPPDATA%\FloorLeveler` 配下に保存する。
+  復元は「最新のバックアップを復元」(自動退避を除く最新へ) に加え、バックアップ
+  一覧から任意時点を選んで復元できる (F-6)。
   キーボードショートカット (記録=Space、適用=Ctrl+Enter、元に戻す=Ctrl+Z)。
 - `tests/FloorLeveler.Core.Tests` — Core の単体テスト (xUnit)。
 - `tests/FloorLeveler.OpenVr.Tests` — interop 層の構造体レイアウト・変換テスト。
