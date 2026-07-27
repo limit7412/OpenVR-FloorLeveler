@@ -42,7 +42,15 @@ jobs:
           size=$(stat -c%s publish/FloorLeveler.exe)
           echo "FloorLeveler.exe: $((size / 1024 / 1024)) MB"
           test "$size" -le $((60 * 1024 * 1024))
+      # 成果物にもライセンス通知を同梱する。exe には openvr_api.dll (BSD 3-Clause) が
+      # 内包されており、この ZIP を単体でダウンロード・共有しても通知が伴うようにするため。
+      - name: Bundle license notice
+        run: cp THIRD-PARTY-NOTICES.md publish/
       - uses: actions/upload-artifact@v4
         with:
+          # 2 つとも publish/ 配下にしておくと ZIP 直下に平置きされる
+          # (共通の親ディレクトリが ZIP のルートになるため)。
           name: FloorLeveler-win-x64
-          path: publish/FloorLeveler.exe
+          path: |
+            publish/FloorLeveler.exe
+            publish/THIRD-PARTY-NOTICES.md
