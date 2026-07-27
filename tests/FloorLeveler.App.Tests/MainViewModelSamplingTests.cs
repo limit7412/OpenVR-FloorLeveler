@@ -199,6 +199,42 @@ public class MainViewModelSamplingTests : IDisposable
         Assert.Equal(afterFirst, vm.PointCount);
     }
 
+    [Fact]
+    public void RecordingPoints_UpdatesVisualizationPlots()
+    {
+        var gateway = new FakeSessionGateway(RigidTransform.Identity);
+        var vm = Connected(gateway); // 手動方式・トラッカー選択
+
+        // 初期状態は空。
+        Assert.True(vm.TopPlot.IsEmpty);
+        Assert.True(vm.SidePlot.IsEmpty);
+
+        // 平らな床に広がった 4 点を手動記録する。
+        var floor = new[]
+        {
+            new Vector3(0.4f, 0f, 0f),
+            new Vector3(-0.4f, 0f, 0.1f),
+            new Vector3(0f, 0f, 0.4f),
+            new Vector3(0.1f, 0f, -0.4f),
+        };
+        foreach (var p in floor)
+        {
+            gateway.PoseForAnyDevice = RigidTransform.CreateTranslation(p);
+            vm.RecordPointCommand.Execute(null);
+        }
+
+        Assert.Equal(4, vm.PointCount);
+        Assert.Equal(4, vm.TopPlot.Points.Count);
+        Assert.Equal(4, vm.SidePlot.Points.Count);
+        // 3 点以上で平面が推定され、側面ビューに床線が現れる。
+        Assert.NotNull(vm.SidePlot.FloorLine);
+
+        // クリアするとプロットも空に戻る。
+        vm.ClearPointsCommand.Execute(null);
+        Assert.True(vm.TopPlot.IsEmpty);
+        Assert.True(vm.SidePlot.IsEmpty);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_dir))

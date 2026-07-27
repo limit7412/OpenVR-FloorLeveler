@@ -26,6 +26,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private CorrectionMode _mode = CorrectionMode.GravityAlign;
     private bool _useRansac;
     private FloorEstimate? _estimate;
+    private FloorPlot _topPlot = FloorProjection.TopDown([]);
+    private FloorPlot _sidePlot = FloorProjection.Side([], null);
     private string _correctionSummary = string.Empty;
     private bool _isPreviewing;
     private bool _largeCorrectionAcknowledged;
@@ -191,6 +193,20 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     }
 
     public int PointCount => _points.Count;
+
+    /// <summary>俯瞰ビュー (XZ 平面) の投影データ (仕様 F-4)。</summary>
+    public FloorPlot TopPlot
+    {
+        get => _topPlot;
+        private set => SetProperty(ref _topPlot, value);
+    }
+
+    /// <summary>側面ビュー (傾き方向の断面) の投影データ (仕様 F-4)。</summary>
+    public FloorPlot SidePlot
+    {
+        get => _sidePlot;
+        private set => SetProperty(ref _sidePlot, value);
+    }
 
     public string SpreadText => _estimate is null
         ? "-"
@@ -398,6 +414,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
         _estimate = FloorEstimation.Estimate(_points, _useRansac, _initialSettings.RansacThresholdMeters);
         _pendingCorrection = TryComputeCorrection();
+
+        // 点群・推定平面を 2D ビューへ投影し直す (仕様 F-4)。
+        TopPlot = FloorProjection.TopDown(_points);
+        SidePlot = FloorProjection.Side(_points, _estimate?.Plane);
 
         // 補正が変わったら確認状態はリセットする (別の大補正を無確認で通さない)。
         _largeCorrectionAcknowledged = false;
