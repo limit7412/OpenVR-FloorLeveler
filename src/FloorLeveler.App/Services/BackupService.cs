@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using FloorLeveler.Core;
@@ -21,7 +22,26 @@ public enum BackupKind
 /// <param name="Path">ファイルの絶対パス。</param>
 /// <param name="Timestamp">ファイル名から復元したタイムスタンプ表示 (yyyyMMdd-HHmmss)。</param>
 /// <param name="Kind">バックアップ種別。</param>
-public sealed record BackupEntry(string Path, string Timestamp, BackupKind Kind);
+public sealed record BackupEntry(string Path, string Timestamp, BackupKind Kind)
+{
+    /// <summary>種別の日本語表示。</summary>
+    public string KindLabel => Kind switch
+    {
+        BackupKind.Auto => "自動 (接続時)",
+        BackupKind.PreApply => "適用前",
+        _ => "手動",
+    };
+
+    /// <summary>一覧表示用のラベル (例: "2026-07-27 03:53:19  適用前")。</summary>
+    public string DisplayName => $"{FormatTimestamp(Timestamp)}  {KindLabel}";
+
+    /// <summary>ファイル名由来の詰めた表記を読みやすい日時に整形する (解析できなければ原文)。</summary>
+    private static string FormatTimestamp(string raw)
+        => DateTime.TryParseExact(
+            raw, "yyyyMMdd-HHmmss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed)
+            ? parsed.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
+            : raw;
+}
 
 /// <summary>
 /// Chaperone スナップショットのファイル保存・読み込み (仕様 F-6)。

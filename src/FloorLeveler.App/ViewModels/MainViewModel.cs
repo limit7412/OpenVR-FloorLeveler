@@ -33,6 +33,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private bool _largeCorrectionAcknowledged;
     private SamplingMode _samplingMode = SamplingMode.Manual;
     private IPoseSampler? _sampler;
+    private BackupEntry? _selectedBackup;
 
     private readonly AppSettings _initialSettings;
     private readonly BackupService _backupService;
@@ -67,6 +68,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         UndoCommand = new RelayCommand(Undo, () => _lastApplied is not null && !IsPreviewing);
         BackupCommand = new RelayCommand(Backup, () => IsConnected && !IsPreviewing);
         RestoreLatestCommand = new RelayCommand(RestoreLatest, () => IsConnected && !IsPreviewing && _backupService.LatestRestorable() is not null);
+        RefreshBackupsCommand = new RelayCommand(RefreshBackups);
+        RestoreSelectedCommand = new RelayCommand(
+            RestoreSelected, () => IsConnected && !IsPreviewing && SelectedBackup is not null);
     }
 
     public ObservableCollection<GatewayDevice> Devices { get; } = [];
@@ -88,6 +92,30 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public RelayCommand BackupCommand { get; }
 
     public RelayCommand RestoreLatestCommand { get; }
+
+    public RelayCommand RefreshBackupsCommand { get; }
+
+    public RelayCommand RestoreSelectedCommand { get; }
+
+    /// <summary>
+    /// 保存済みバックアップの一覧 (新しい順、仕様 F-6 の「任意時点への復元」)。
+    /// 明示的に選んで復元する用途のため、自動退避 (Auto) も種別を添えて含める
+    /// (最新の自動選択では除外するが、ユーザーが指定するなら選べてよい)。
+    /// </summary>
+    public ObservableCollection<BackupEntry> Backups { get; } = [];
+
+    /// <summary>一覧で選択中のバックアップ。</summary>
+    public BackupEntry? SelectedBackup
+    {
+        get => _selectedBackup;
+        set
+        {
+            if (SetProperty(ref _selectedBackup, value))
+            {
+                RestoreSelectedCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
 
     public bool IsConnected
     {
@@ -280,6 +308,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
             // 初回接続時に現在の設定を自動退避しておく (仕様 F-6)。
             TryAutoBackup();
+            RefreshBackups(); // 既存の退避も含めて一覧を初期化する
 
             _log?.Log("接続しました。");
             StatusMessage = "SteamVR に接続しました。";
@@ -652,6 +681,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             _log?.Log($"バックアップを保存: {path}");
             StatusMessage = $"バックアップを保存しました: {Path.GetFileName(path)}";
             RestoreLatestCommand.RaiseCanExecuteChanged();
+            RefreshBackups();
         }
         catch (Exception ex)
         {
@@ -677,49 +707,109 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
         // 新しい順に試し、復元できない候補 (保存中断・不完全コピー・手動編集による
         // 形状不正、または OpenVR が Live 反映を拒否する値) は飛ばして次の有効な
-        // 候補へ進む。読み込み・形状検証・working copy への書き戻し・commit までを
-        // 候補ごとに試し、いずれで失敗しても revert して次の候補へ。
+        // 候補へ進む。
         var skipped = 0;
         foreach (var entry in candidates)
         {
-            try
+            if (!TryRestore(entry))
             {
-                var snapshot = _backupService.Load(entry.Path);
-                snapshot.Validate(); // 形状不正 (行列・境界・プレイエリア) はここで例外
-                _gateway.RestoreSnapshot(snapshot);
-            }
-            catch
-            {
-                skipped++;
-                TryRevert();
-                continue;
-            }
-
-            if (!_gateway.Commit())
-            {
-                // Live 反映が拒否された場合も候補固有の失敗として扱い、次候補を試す。
-                _gateway.Revert();
                 skipped++;
                 continue;
             }
 
-            // 復元により standing 座標系が不連続に変わるため、旧座標系で記録した
-            // サンプル点・保留補正・アンドゥ履歴をすべて破棄して再計算する
-            // (Apply/Undo と異なり復元前後の姿勢を関係づける単一の変換が無いため、
-            // 点群は写像ではなくクリアする)。
-            _points.Clear();
-            _sampler?.Reset(); // 復元で standing 座標系が変わったためサンプラーも初期化
-            _lastApplied = null;
-            _log?.Log($"バックアップを復元: {entry.Path}" + (skipped > 0 ? $" ({skipped} 件をスキップ)" : string.Empty));
-            Recompute();
-            StatusMessage = skipped > 0
-                ? $"バックアップを復元しました: {entry.Timestamp} ({skipped} 件をスキップ)"
-                : $"バックアップを復元しました: {entry.Timestamp}";
-            UndoCommand.RaiseCanExecuteChanged();
+            AfterRestore(entry, skipped);
             return;
         }
 
         StatusMessage = "有効なバックアップがありませんでした (すべて復元に失敗)。";
+    }
+
+    /// <summary>一覧で選択したバックアップへ復元する (仕様 F-6 の任意時点への復元)。</summary>
+    private void RestoreSelected()
+    {
+        if (_gateway is null || SelectedBackup is not { } entry)
+        {
+            return;
+        }
+
+        // 明示的に指定された 1 件のみを試し、失敗しても他候補へは進まない
+        // (ユーザーが選んだ時点と異なる状態を黙って復元しないため)。
+        if (!TryRestore(entry))
+        {
+            StatusMessage = $"バックアップを復元できませんでした: {entry.DisplayName}";
+            return;
+        }
+
+        AfterRestore(entry, skipped: 0);
+    }
+
+    /// <summary>
+    /// バックアップ 1 件を working copy へ書き戻して commit する。読み込み・形状検証・
+    /// 書き戻し・commit のいずれで失敗しても revert し、false を返す (仕様 NF-5)。
+    /// </summary>
+    private bool TryRestore(BackupEntry entry)
+    {
+        if (_gateway is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            var snapshot = _backupService.Load(entry.Path);
+            snapshot.Validate(); // 形状不正 (行列・境界・プレイエリア) はここで例外
+            _gateway.RestoreSnapshot(snapshot);
+        }
+        catch
+        {
+            TryRevert();
+            return false;
+        }
+
+        if (!_gateway.Commit())
+        {
+            // Live 反映が拒否された場合も候補固有の失敗として扱う。
+            _gateway.Revert();
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>復元成功後の状態初期化と通知。</summary>
+    /// <param name="skipped">この復元までに読み飛ばした候補数 (0 なら表示しない)。</param>
+    private void AfterRestore(BackupEntry entry, int skipped)
+    {
+        // 復元により standing 座標系が不連続に変わるため、旧座標系で記録した
+        // サンプル点・保留補正・アンドゥ履歴をすべて破棄して再計算する
+        // (Apply/Undo と異なり復元前後の姿勢を関係づける単一の変換が無いため、
+        // 点群は写像ではなくクリアする)。
+        _points.Clear();
+        _sampler?.Reset(); // 復元で standing 座標系が変わったためサンプラーも初期化
+        _lastApplied = null;
+        _log?.Log($"バックアップを復元: {entry.Path}" + (skipped > 0 ? $" ({skipped} 件をスキップ)" : string.Empty));
+        Recompute();
+        StatusMessage = skipped > 0
+            ? $"バックアップを復元しました: {entry.Timestamp} ({skipped} 件をスキップ)"
+            : $"バックアップを復元しました: {entry.Timestamp}";
+        UndoCommand.RaiseCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// バックアップ一覧を読み直す。選択は同じファイルがあれば維持する
+    /// (退避直後の再読込で選択が飛ばないようにするため)。
+    /// </summary>
+    private void RefreshBackups()
+    {
+        var previous = SelectedBackup?.Path;
+        Backups.Clear();
+        foreach (var entry in _backupService.List())
+        {
+            Backups.Add(entry);
+        }
+
+        SelectedBackup = Backups.FirstOrDefault(e => e.Path == previous);
+        RestoreSelectedCommand.RaiseCanExecuteChanged();
     }
 
     private void TryRevert()
@@ -751,6 +841,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             // 退避直後は復元ボタンを有効化できる (接続時の RaiseCommandStates は
             // この保存より前に走るため、ここで明示的に再評価する)。
             RestoreLatestCommand.RaiseCanExecuteChanged();
+            RefreshBackups();
             return true;
         }
         catch
@@ -779,6 +870,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         UndoCommand.RaiseCanExecuteChanged();
         BackupCommand.RaiseCanExecuteChanged();
         RestoreLatestCommand.RaiseCanExecuteChanged();
+        RestoreSelectedCommand.RaiseCanExecuteChanged();
         OnPropertyChanged(nameof(CanApply));
     }
 

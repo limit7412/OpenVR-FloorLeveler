@@ -122,8 +122,24 @@
             <Button Content="現在の設定を退避" Command="{Binding BackupCommand}" />
             <Button Content="最新のバックアップを復元" Command="{Binding RestoreLatestCommand}" />
           </StackPanel>
+
+          <!-- 任意時点への復元 (仕様 F-6) -->
+          <TextBlock Text="任意時点への復元" FontSize="12" Foreground="#A0808080" />
+          <ListBox ItemsSource="{Binding Backups}" SelectedItem="{Binding SelectedBackup}"
+                   Height="120">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="svc:BackupEntry">
+                <TextBlock Text="{Binding DisplayName}" />
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="選択したバックアップを復元" Command="{Binding RestoreSelectedCommand}" />
+            <Button Content="一覧を更新" Command="{Binding RefreshBackupsCommand}" />
+          </StackPanel>
+
           <TextBlock FontSize="11" Foreground="#A0808080" TextWrapping="Wrap"
-                     Text="接続時に自動で退避されます。復元は %LOCALAPPDATA%\FloorLeveler\backups の最新ファイルを Live へ反映します。" />
+                     Text="接続時に自動で退避されます。「最新のバックアップを復元」は自動退避を除いた最新を、一覧からの復元は選択した時点をそのまま Live へ反映します (保存先: %LOCALAPPDATA%\FloorLeveler\backups)。" />
         </StackPanel>
       </Border>
 
