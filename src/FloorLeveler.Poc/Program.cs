@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Numerics;
 using System.Text.Json;
 using FloorLeveler.Core;
@@ -51,7 +52,7 @@ static int Status()
     Console.WriteLine("\n[devices]");
     foreach (var d in session.System.ListConnectedDevices())
     {
-        Console.WriteLine($"  #{d.Index,2} {d.DeviceClass,-18} {d.ModelNumber} ({d.SerialNumber})");
+        Console.WriteLine(Inv($"  #{d.Index,2} {d.DeviceClass,-18} {d.ModelNumber} ({d.SerialNumber})"));
     }
 
     var standing = session.ChaperoneSetup.GetWorkingStandingZeroPose();
@@ -63,11 +64,11 @@ static int Status()
 
     var playArea = session.ChaperoneSetup.GetWorkingPlayAreaSize();
     var bounds = session.ChaperoneSetup.GetWorkingCollisionBounds();
-    var area = playArea is var (x, z) ? $"{x:F2}m x {z:F2}m" : "unavailable";
-    Console.WriteLine($"\nplay area: {area}, bounds quads: {bounds.Length}");
+    var area = playArea is var (x, z) ? Inv($"{x:F2}m x {z:F2}m") : "unavailable";
+    Console.WriteLine(Inv($"\nplay area: {area}, bounds quads: {bounds.Length}"));
 
     var gravity = Correction.ComputeGravityAlign(standing);
-    Console.WriteLine($"tilt from gravity: {gravity.RotationAngleDegrees:F3} deg (axis {Format(gravity.RotationAxis)})");
+    Console.WriteLine(Inv($"tilt from gravity: {gravity.RotationAngleDegrees:F3} deg (axis {Format(gravity.RotationAxis)})"));
     return 0;
 }
 
@@ -104,7 +105,7 @@ static int Level(string[] args)
     var standing = session.ChaperoneSetup.GetWorkingStandingZeroPose();
     var correction = Correction.ComputeGravityAlign(standing);
 
-    Console.WriteLine($"current tilt: {correction.RotationAngleDegrees:F3} deg (axis {Format(correction.RotationAxis)})");
+    Console.WriteLine(Inv($"current tilt: {correction.RotationAngleDegrees:F3} deg (axis {Format(correction.RotationAxis)})"));
     if (correction.IsNegligible)
     {
         Console.WriteLine("No correction needed (rotation under 0.05 deg and translation under 1 mm).");
@@ -124,7 +125,7 @@ static int ApplyAndMaybeCommitWith(OpenVrSession session, CorrectionResult corre
 {
     if (correction.RequiresConfirmation)
     {
-        Console.Write($"Rotation is large ({correction.RotationAngleDegrees:F1} deg). Continue? [yes/no]: ");
+        Console.Write(Inv($"Rotation is large ({correction.RotationAngleDegrees:F1} deg). Continue? [yes/no]: "));
         if (Console.ReadLine()?.Trim() != "yes")
         {
             Console.WriteLine("Aborted.");
@@ -140,7 +141,7 @@ static int ApplyAndMaybeCommitWith(OpenVrSession session, CorrectionResult corre
         PrintMatrix(applied.OldStandingToRaw);
         Console.WriteLine("[standing -> raw, after]");
         PrintMatrix(applied.NewStandingToRaw);
-        Console.WriteLine($"Transformed {applied.TransformedBoundsQuadCount} bounds quad(s) to match the correction.");
+        Console.WriteLine(Inv($"Transformed {applied.TransformedBoundsQuadCount} bounds quad(s) to match the correction."));
 
         if (commit)
         {
@@ -240,7 +241,7 @@ static string DefaultBackupPath()
     => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "FloorLeveler", "backups",
-        $"{DateTime.Now:yyyyMMdd-HHmmss}.json");
+        $"{DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)}.json");
 
 static JsonSerializerOptions JsonOptions() => new() { WriteIndented = true };
 
@@ -249,11 +250,18 @@ static void PrintMatrix(RigidTransform t)
     var m = t.ToRowMajor3x4();
     for (var r = 0; r < 3; r++)
     {
-        Console.WriteLine($"  [{m[r, 0],9:F5} {m[r, 1],9:F5} {m[r, 2],9:F5} | {m[r, 3],9:F5}]");
+        Console.WriteLine(Inv($"  [{m[r, 0],9:F5} {m[r, 1],9:F5} {m[r, 2],9:F5} | {m[r, 3],9:F5}]"));
     }
 }
 
-static string Format(Vector3 v) => $"({v.X:F3}, {v.Y:F3}, {v.Z:F3})";
+static string Format(Vector3 v) => Inv($"({v.X:F3}, {v.Y:F3}, {v.Z:F3})");
+
+/// <summary>
+/// 診断出力は不変カルチャで整形する。小数点がカンマになるロケールでは
+/// 成分の区切りと見分けが付かず ((0,000, 1,000, 0,000) など)、環境をまたいだ
+/// 比較や機械的な読み取りができなくなるため。
+/// </summary>
+static string Inv(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
 
 static float? ReadFloatOption(string[] args, string name)
 {

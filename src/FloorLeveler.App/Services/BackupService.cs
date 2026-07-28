@@ -74,7 +74,10 @@ public sealed class BackupService
         Directory.CreateDirectory(_directory);
         var json = JsonSerializer.Serialize(snapshot, BackupJsonContext.Default.ChaperoneSnapshot);
         var kindTag = KindTag(kind);
-        var stamp = timestamp.ToString("yyyyMMdd-HHmmss");
+        // 不変カルチャで整形する。既定カレンダーがグレゴリオ暦でないロケール
+        // (ar-SA など) では年が別暦になり、読み出し側の TryParseExact
+        // (InvariantCulture) と噛み合わなくなるため。
+        var stamp = timestamp.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
 
         while (true)
         {
