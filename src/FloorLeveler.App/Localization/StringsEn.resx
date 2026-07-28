@@ -154,7 +154,7 @@
     <comment>{0}=失敗の詳細</comment>
   </data>
   <data name="StatusNativeLibraryMissing" xml:space="preserve">
-    <value>openvr_api.dll was not found. Install SteamVR, or place openvr_api.dll next to FloorLeveler.exe.</value>
+    <value>openvr_api.dll was not found. Install SteamVR, or place openvr_api.dll next to this app's exe.</value>
   </data>
   <data name="StatusManualMode" xml:space="preserve">
     <value>Manual: record with the Record button or Space.</value>

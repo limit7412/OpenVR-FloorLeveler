@@ -32,15 +32,16 @@ OpenVR Advanced Settings の "Fix Floor" が高さ (Y オフセット) のみを
 ## インストール
 
 [Releases](https://github.com/limit7412/OpenVR-FloorLeveler/releases) から
-`FloorLeveler.exe` をダウンロードして実行するだけ。インストーラーもランタイムの
-事前導入も不要 (.NET ランタイムは exe に同梱)。
+`FloorLeveler-win-x64-<バージョン>.exe` をダウンロードして実行するだけ。
+インストーラーもランタイムの事前導入も不要 (.NET ランタイムは exe に同梱)。
+exe は好きな名前に変更してよい (動作はファイル名に依存しない)。
 
 `openvr_api.dll` を別途用意する必要はない。exe の隣や OS の検索パスに見つからない
 場合は、SteamVR に付属するものを読み込む (詳細は「openvr_api.dll の解決順」)。
 
 ## 使い方
 
-1. **接続** — SteamVR を起動した状態で `FloorLeveler.exe` を実行し、「接続 / 再試行」を押す
+1. **接続** — SteamVR を起動した状態でダウンロードした exe を実行し、「接続 / 再試行」を押す
    - 接続時に現在の Chaperone 設定がバックアップされる。保存に失敗した場合も
      接続は続行し、警告は出ない。確実に退避しておきたい場合は
      「現在の設定を退避」を押し、バックアップ一覧に項目が増えたことを確認する
@@ -228,6 +229,12 @@ dotnet publish src/FloorLeveler.App -c Release -r win-x64 --self-contained \
 | `ci.yml` | `master` への push / PR | ビルド・テストと、単一 exe 発行が壊れていないことの確認 (Linux) |
 | `build.yml` | 手動 / `release.yml` から | Windows でテスト → 単一 exe 発行 → サイズ予算 → スモークテスト |
 | `release.yml` | バージョンタグの push | `build.yml` を呼び、成果物を GitHub Release へ添付 |
+
+`build.yml` が発行する exe のファイル名にはバージョンが入る
+(`FloorLeveler-win-x64-0.1.0.exe`)。Artifacts の名前も同じで、展開したあとの exe 単体でも
+どのビルドか分かる。手元で `dotnet publish` した場合の出力名は `FloorLeveler.exe` のまま
+(発行の出力名は `AssemblyName` 由来で、ワークフローが発行後に改名している)。
+どちらも動作はファイル名に依存しない。
 
 ### 手動ビルド
 
