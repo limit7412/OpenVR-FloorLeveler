@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Numerics;
 using FloorLeveler.App.Services;
 using FloorLeveler.Core;
@@ -168,4 +169,34 @@ public class BackupServiceTests : IDisposable
             Directory.Delete(_dir, recursive: true);
         }
     }
+
+    [Fact]
+    public void Save_FileNameUsesTheGregorianCalendarRegardlessOfTheCulture()
+    {
+        // 既定カレンダーがグレゴリオ暦でないロケール (ar-SA など) では、現在の
+        // カルチャで整形すると年が別暦になり (2026 → 1448)、読み出し側の
+        // TryParseExact (InvariantCulture) と噛み合わなくなる。
+        var culture = new CultureInfo("ar-SA");
+        culture.DateTimeFormat.Calendar = new UmAlQuraCalendar();
+
+        var service = new BackupService(_dir);
+        var previous = CultureInfo.CurrentCulture;
+        string path;
+        try
+        {
+            CultureInfo.CurrentCulture = culture;
+            path = service.Save(Sample(1f), new DateTime(2026, 7, 23, 3, 0, 0), BackupKind.Manual);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
+
+        Assert.StartsWith("20260723-", Path.GetFileName(path), StringComparison.Ordinal);
+
+        // 一覧側でも日時として解釈できること (解釈できないとファイル名が素通しで出る)。
+        var entry = Assert.Single(service.List());
+        Assert.Equal("2026-07-23 03:00:00", entry.FormattedTimestamp);
+    }
+
 }

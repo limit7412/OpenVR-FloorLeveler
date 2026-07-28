@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Numerics;
 using System.Text.Json;
 using FloorLeveler.Core;
@@ -21,17 +22,18 @@ static int Help()
 {
     Console.WriteLine(
         """
-        FloorLeveler M0 PoC — SteamVR Chaperone 床補正の検証ツール
+        FloorLeveler M0 PoC - verification tool for SteamVR Chaperone floor correction
 
-        使い方:
-          status                     接続状態・デバイス一覧・S→R 行列・境界情報を表示
-          tilt --roll <度> [--commit]   standing 空間に微小ロール回転を適用 (符号規約の目視確認用)
-          level [--commit]           モード A (重力水平化) の補正を適用
-          backup [--file <パス>]      現在の working copy をスナップショット保存
-          restore --file <パス> [--commit]  スナップショットを working copy へ復元
+        Usage:
+          status                            Show connection, devices, S->R matrices and bounds
+          tilt --roll <deg> [--commit]      Apply a small roll rotation to the standing space
+                                            (to check the sign convention by eye)
+          level [--commit]                  Apply the mode A (gravity align) correction
+          backup [--file <path>]            Save the current working copy as a snapshot
+          restore --file <path> [--commit]  Restore a snapshot into the working copy
 
-        --commit を付けない場合、変更は working copy とプレビュー表示のみで、
-        終了時に revert して Live 設定には反映しない (仕様 NF-5)。
+        Without --commit, changes stay in the working copy and the preview only, and are
+        reverted on exit instead of being written to the Live configuration.
         """);
     return 1;
 }
@@ -40,32 +42,33 @@ static int Status()
 {
     if (!OpenVrSession.IsRuntimeInstalled())
     {
-        Console.WriteLine("SteamVR ランタイムが見つかりません。");
+        Console.WriteLine("SteamVR runtime not found.");
         return 1;
     }
 
     using var session = OpenVrSession.Connect();
-    Console.WriteLine("SteamVR に接続しました。");
+    Console.WriteLine("Connected to SteamVR.");
 
-    Console.WriteLine("\n[デバイス]");
+    Console.WriteLine("\n[devices]");
     foreach (var d in session.System.ListConnectedDevices())
     {
-        Console.WriteLine($"  #{d.Index,2} {d.DeviceClass,-18} {d.ModelNumber} ({d.SerialNumber})");
+        Console.WriteLine(Inv($"  #{d.Index,2} {d.DeviceClass,-18} {d.ModelNumber} ({d.SerialNumber})"));
     }
 
     var standing = session.ChaperoneSetup.GetWorkingStandingZeroPose();
     var seated = session.ChaperoneSetup.GetWorkingSeatedZeroPose();
-    Console.WriteLine("\n[standing → raw]");
+    Console.WriteLine("\n[standing -> raw]");
     PrintMatrix(standing);
-    Console.WriteLine("[seated → raw]");
+    Console.WriteLine("[seated -> raw]");
     PrintMatrix(seated);
 
     var playArea = session.ChaperoneSetup.GetWorkingPlayAreaSize();
     var bounds = session.ChaperoneSetup.GetWorkingCollisionBounds();
-    Console.WriteLine($"\nプレイエリア: {(playArea is var (x, z) ? $"{x:F2}m x {z:F2}m" : "取得失敗")}, 境界 quad 数: {bounds.Length}");
+    var area = playArea is var (x, z) ? Inv($"{x:F2}m x {z:F2}m") : "unavailable";
+    Console.WriteLine(Inv($"\nplay area: {area}, bounds quads: {bounds.Length}"));
 
     var gravity = Correction.ComputeGravityAlign(standing);
-    Console.WriteLine($"重力水平からの傾き: {gravity.RotationAngleDegrees:F3}° (軸 {Format(gravity.RotationAxis)})");
+    Console.WriteLine(Inv($"tilt from gravity: {gravity.RotationAngleDegrees:F3} deg (axis {Format(gravity.RotationAxis)})"));
     return 0;
 }
 
@@ -74,7 +77,7 @@ static int Tilt(string[] args)
     var roll = ReadFloatOption(args, "--roll");
     if (roll is null)
     {
-        Console.WriteLine("--roll <度> を指定してください (例: tilt --roll 0.5)");
+        Console.WriteLine("Specify --roll <deg> (for example: tilt --roll 0.5)");
         return 1;
     }
 
@@ -102,10 +105,10 @@ static int Level(string[] args)
     var standing = session.ChaperoneSetup.GetWorkingStandingZeroPose();
     var correction = Correction.ComputeGravityAlign(standing);
 
-    Console.WriteLine($"現在の傾き: {correction.RotationAngleDegrees:F3}° (軸 {Format(correction.RotationAxis)})");
+    Console.WriteLine(Inv($"current tilt: {correction.RotationAngleDegrees:F3} deg (axis {Format(correction.RotationAxis)})"));
     if (correction.IsNegligible)
     {
-        Console.WriteLine("補正不要です (回転 0.05° 未満かつ並進 1 mm 未満)。");
+        Console.WriteLine("No correction needed (rotation under 0.05 deg and translation under 1 mm).");
         return 0;
     }
 
@@ -122,10 +125,10 @@ static int ApplyAndMaybeCommitWith(OpenVrSession session, CorrectionResult corre
 {
     if (correction.RequiresConfirmation)
     {
-        Console.Write($"回転が {correction.RotationAngleDegrees:F1}° と大きいです。続行しますか? [yes/no]: ");
+        Console.Write(Inv($"Rotation is large ({correction.RotationAngleDegrees:F1} deg). Continue? [yes/no]: "));
         if (Console.ReadLine()?.Trim() != "yes")
         {
-            Console.WriteLine("中止しました。");
+            Console.WriteLine("Aborted.");
             return 1;
         }
     }
@@ -134,32 +137,32 @@ static int ApplyAndMaybeCommitWith(OpenVrSession session, CorrectionResult corre
     try
     {
         var applied = chaperone.ApplyCorrection(correction);
-        Console.WriteLine("[適用前 standing → raw]");
+        Console.WriteLine("[standing -> raw, before]");
         PrintMatrix(applied.OldStandingToRaw);
-        Console.WriteLine("[適用後 standing → raw]");
+        Console.WriteLine("[standing -> raw, after]");
         PrintMatrix(applied.NewStandingToRaw);
-        Console.WriteLine($"境界 quad {applied.TransformedBoundsQuadCount} 枚を補正に合わせて変換しました。");
+        Console.WriteLine(Inv($"Transformed {applied.TransformedBoundsQuadCount} bounds quad(s) to match the correction."));
 
         if (commit)
         {
             if (!chaperone.Commit())
             {
                 chaperone.Revert();
-                Console.WriteLine("CommitWorkingCopy が失敗したため revert しました。");
+                Console.WriteLine("CommitWorkingCopy failed; reverted.");
                 return 1;
             }
 
-            Console.WriteLine("Live 設定へ commit しました。SteamVR 上で床の変化を確認してください。");
+            Console.WriteLine("Committed to the Live configuration. Check the floor in SteamVR.");
             return 0;
         }
 
         chaperone.ShowWorkingSetPreview();
-        Console.WriteLine("working copy に適用しプレビューを表示中です (commit はしていません)。");
-        Console.Write("Enter で revert して終了します...");
+        Console.WriteLine("Applied to the working copy and showing the preview (not committed).");
+        Console.Write("Press Enter to revert and exit...");
         Console.ReadLine();
         chaperone.HideWorkingSetPreview();
         chaperone.Revert();
-        Console.WriteLine("revert しました。");
+        Console.WriteLine("Reverted.");
         return 0;
     }
     catch
@@ -178,7 +181,7 @@ static int Backup(string[] args)
     var snapshot = ChaperoneSnapshot.Capture(session.ChaperoneSetup);
     Directory.CreateDirectory(Path.GetDirectoryName(path)!);
     File.WriteAllText(path, JsonSerializer.Serialize(snapshot, JsonOptions()));
-    Console.WriteLine($"スナップショットを保存しました: {path}");
+    Console.WriteLine($"Snapshot saved: {path}");
     return 0;
 }
 
@@ -187,14 +190,14 @@ static int Restore(string[] args)
     var path = ReadStringOption(args, "--file");
     if (path is null || !File.Exists(path))
     {
-        Console.WriteLine("--file <パス> に存在するスナップショットを指定してください。");
+        Console.WriteLine("Specify an existing snapshot with --file <path>.");
         return 1;
     }
 
     var snapshot = JsonSerializer.Deserialize<ChaperoneSnapshot>(File.ReadAllText(path), JsonOptions());
     if (snapshot is null)
     {
-        Console.WriteLine("スナップショットの読み込みに失敗しました。");
+        Console.WriteLine("Could not read the snapshot.");
         return 1;
     }
 
@@ -208,23 +211,23 @@ static int Restore(string[] args)
             if (!chaperone.Commit())
             {
                 chaperone.Revert();
-                Console.WriteLine("CommitWorkingCopy が失敗したため revert しました。");
+                Console.WriteLine("CommitWorkingCopy failed; reverted.");
                 return 1;
             }
 
-            Console.WriteLine("スナップショットを Live 設定へ復元しました。");
+            Console.WriteLine("Restored the snapshot to the Live configuration.");
             return 0;
         }
 
         // --commit なしは他コマンドと同様プレビューのみで、未コミットの復元内容を
         // working copy に残さない。
         chaperone.ShowWorkingSetPreview();
-        Console.WriteLine("working copy へ復元しプレビューを表示中です (--commit で Live に反映)。");
-        Console.Write("Enter で revert して終了します...");
+        Console.WriteLine("Restored into the working copy and showing the preview (--commit writes to Live).");
+        Console.Write("Press Enter to revert and exit...");
         Console.ReadLine();
         chaperone.HideWorkingSetPreview();
         chaperone.Revert();
-        Console.WriteLine("revert しました。");
+        Console.WriteLine("Reverted.");
         return 0;
     }
     catch
@@ -238,7 +241,7 @@ static string DefaultBackupPath()
     => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "FloorLeveler", "backups",
-        $"{DateTime.Now:yyyyMMdd-HHmmss}.json");
+        $"{DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)}.json");
 
 static JsonSerializerOptions JsonOptions() => new() { WriteIndented = true };
 
@@ -247,11 +250,18 @@ static void PrintMatrix(RigidTransform t)
     var m = t.ToRowMajor3x4();
     for (var r = 0; r < 3; r++)
     {
-        Console.WriteLine($"  [{m[r, 0],9:F5} {m[r, 1],9:F5} {m[r, 2],9:F5} | {m[r, 3],9:F5}]");
+        Console.WriteLine(Inv($"  [{m[r, 0],9:F5} {m[r, 1],9:F5} {m[r, 2],9:F5} | {m[r, 3],9:F5}]"));
     }
 }
 
-static string Format(Vector3 v) => $"({v.X:F3}, {v.Y:F3}, {v.Z:F3})";
+static string Format(Vector3 v) => Inv($"({v.X:F3}, {v.Y:F3}, {v.Z:F3})");
+
+/// <summary>
+/// 診断出力は不変カルチャで整形する。小数点がカンマになるロケールでは
+/// 成分の区切りと見分けが付かず ((0,000, 1,000, 0,000) など)、環境をまたいだ
+/// 比較や機械的な読み取りができなくなるため。
+/// </summary>
+static string Inv(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
 
 static float? ReadFloatOption(string[] args, string name)
 {

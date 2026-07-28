@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Numerics;
 using FloorLeveler.App.Localization;
 using FloorLeveler.App.Services;
@@ -351,7 +352,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             TryAutoBackup();
             RefreshBackups(); // 既存の退避も含めて一覧を初期化する
 
-            _log?.Log("接続しました。");
+            _log?.Log("Connected.");
             SetStatus(s => s.StatusConnected);
         }
         catch (Exception ex)
@@ -641,9 +642,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             _lastApplied = applied;
 
             // 適用操作は変更前後の行列値を記録する (仕様 NF-4)。
-            _log?.Log(
-                $"補正を適用 (モード {correction.Mode}, 回転 {correction.RotationAngleDegrees:F3}°): " +
-                $"S→R {FormatMatrix(applied.OldStandingToRaw)} → {FormatMatrix(applied.NewStandingToRaw)}");
+            _log?.Log(string.Create(
+                CultureInfo.InvariantCulture,
+                $"Applied correction (mode {correction.Mode}, rotation {correction.RotationAngleDegrees:F3} deg): " +
+                $"standing->raw {FormatMatrix(applied.OldStandingToRaw)} -> {FormatMatrix(applied.NewStandingToRaw)}"));
 
             // 適用済みの補正を保留したままにしない (二度押しで再合成される問題の防止)。
             // サンプル点は新しい standing 座標へ写し、新姿勢を基準に再計算する。
@@ -698,7 +700,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             }
 
             _lastApplied = null;
-            _log?.Log("直前の補正を元に戻しました。");
+            _log?.Log("Undid the last correction.");
 
             // standing 座標系が元に戻ったため、サンプル点も元の座標へ戻して再計算する。
             for (var i = 0; i < _points.Count; i++)
@@ -728,7 +730,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         try
         {
             var path = _backupService.Save(_gateway.CaptureSnapshot(), _clock(), BackupKind.Manual);
-            _log?.Log($"バックアップを保存: {path}");
+            _log?.Log($"Backup saved: {path}");
             var fileName = Path.GetFileName(path);
             SetStatus(s => s.StatusBackupSaved(fileName));
             RestoreLatestCommand.RaiseCanExecuteChanged();
@@ -852,7 +854,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _points.Clear();
         _sampler?.Reset(); // 復元で standing 座標系が変わったためサンプラーも初期化
         _lastApplied = null;
-        _log?.Log($"バックアップを復元: {entry.Path}" + (skipped > 0 ? $" ({skipped} 件をスキップ)" : string.Empty));
+        _log?.Log($"Backup restored: {entry.Path}"
+            + (skipped > 0 ? string.Create(CultureInfo.InvariantCulture, $" ({skipped} skipped)") : string.Empty));
         Recompute();
         var timestamp = entry.Timestamp;
         SetStatus(skipped > 0
@@ -925,12 +928,18 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private static PlotAxisLabels SideAxisLabels(Strings strings)
         => new(strings.PlotAxisTiltDirection, strings.PlotAxisHeight);
 
+    /// <summary>
+    /// ログ用の行列表記。小数点や桁区切りが実行環境のロケールで変わらないよう、
+    /// 不変カルチャで整形する (ログは環境をまたいで読まれる診断出力のため)。
+    /// </summary>
     private static string FormatMatrix(RigidTransform t)
     {
         var m = t.ToRowMajor3x4();
-        return $"[{m[0, 0]:F4},{m[0, 1]:F4},{m[0, 2]:F4},{m[0, 3]:F4}; "
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"[{m[0, 0]:F4},{m[0, 1]:F4},{m[0, 2]:F4},{m[0, 3]:F4}; "
             + $"{m[1, 0]:F4},{m[1, 1]:F4},{m[1, 2]:F4},{m[1, 3]:F4}; "
-            + $"{m[2, 0]:F4},{m[2, 1]:F4},{m[2, 2]:F4},{m[2, 3]:F4}]";
+            + $"{m[2, 0]:F4},{m[2, 1]:F4},{m[2, 2]:F4},{m[2, 3]:F4}]");
     }
 
     private void RaiseCommandStates()

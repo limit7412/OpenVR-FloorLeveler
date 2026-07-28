@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace FloorLeveler.App.Services;
 
 /// <summary>
@@ -39,7 +41,11 @@ public sealed class RotatingLogWriter
             {
                 Directory.CreateDirectory(_directory);
                 RotateIfNeeded();
-                var line = $"{_clock():yyyy-MM-dd HH:mm:ss} {message}{Environment.NewLine}";
+                // 不変カルチャで整形する。カスタム書式の ':' は時刻区切りの
+                // プレースホルダで、ロケールによっては別の文字に置き換わるため。
+                var line = string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{_clock():yyyy-MM-dd HH:mm:ss} {message}{Environment.NewLine}");
                 File.AppendAllText(CurrentPath, line);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
