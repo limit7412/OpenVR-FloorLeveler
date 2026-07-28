@@ -1,66 +1,144 @@
 # OpenVR-FloorLeveler
 
 SteamVR (Lighthouse トラッキング環境) の床面の傾きを検出・補正するデスクトップツール。
-仕様は [#1](https://github.com/limit7412/OpenVR-FloorLeveler/issues/1) を参照。
 
-## 構成
+ルームセットアップ後に「床がわずかに傾いて感じる」「トラッカーを床に置くと沈む/浮く」
+といった症状を、数分で解消することを目的としている。
 
-Functional Core / Imperative Shell 構成を採用している。
+OpenVR Advanced Settings の "Fix Floor" が高さ (Y オフセット) のみを補正するのに対し、
+本ツールは **roll / pitch の回転成分を含めた床面姿勢**を補正する。
 
-- `src/FloorLeveler.Core` — 純粋関数のみのロジック層。平面フィット (PCA / RANSAC)、
-  補正変換の算出 (モード A: 重力水平化 / モード B: 実測床面合わせ)、剛体変換
-  (`HmdMatrix34_t` 相当との相互変換)、サンプル棄却判定、Chaperone 境界頂点の変換。
-  OpenVR の型には依存しない。
-- `src/FloorLeveler.OpenVr` — OpenVR interop 層。`openvr_api.dll` の FnTable を
-  P/Invoke で呼び出す薄いラッパー (`OpenVrSession` / `VrSystem` / `ChaperoneTuner`)。
-- `src/FloorLeveler.Poc` — M0 PoC コンソール。SteamVR 実機での S→R 行列の読み書き、
-  微小回転の適用、符号規約の検証、スナップショットの保存/復元を行う。
-- `src/FloorLeveler.App` — Avalonia UI のデスクトップ GUI (`FloorLeveler.exe`)。
-  接続状態バー / サンプリング (手動・静置方式・連続方式) / 推定結果 /
-  点群・床面の可視化 (俯瞰・側面ビュー) / 補正 / バックアップの縦積み構成 (仕様 §6)。
-  自動サンプリングの判定ロジックは Core の `StillnessSampler` / `ContinuousSampler`
-  に純粋関数として実装し、UI 側はタイマーでポーズを供給するだけ。可視化 (F-4) も
-  Core の `FloorProjection` が 2D への投影を純粋関数で行い、`FloorPlotControl` は
-  メートル座標をピクセルに写して描画するだけの薄い Shell。
-  OpenVR へのアクセスは `ISessionGateway` の背後に隠し、UI ロジックを実機なしで
-  テスト可能にしている。設定 (F-7)・スナップショットのバックアップ/復元 (F-6)・
-  ローテーション付きログ (NF-4) を `%LOCALAPPDATA%\FloorLeveler` 配下に保存する。
-  復元は「最新のバックアップを復元」(自動退避を除く最新へ) に加え、バックアップ
-  一覧から任意時点を選んで復元できる (F-6)。
-  キーボードショートカット (記録=Space、適用=Ctrl+Enter、元に戻す=Ctrl+Z)。
-  UI 文字列は `Localization/StringsJa.resx` / `StringsEn.resx` に分離し、日本語と
-  英語を実行中に切り替えられる (§6)。
-- `tests/FloorLeveler.Core.Tests` — Core の単体テスト (xUnit)。
-- `tests/FloorLeveler.OpenVr.Tests` — interop 層の構造体レイアウト・変換テスト。
-- `tests/FloorLeveler.App.Tests` — GUI の ViewModel テスト (fake gateway 使用)。
+補正は `IVRChaperoneSetup` を通じて standing universe → raw tracking universe の変換行列
+(`StandingZeroPoseToRawTrackingPose`) を書き換えることで行う。standing / seated 座標を
+基準とするアプリケーション (VRChat を含む一般的な VR アプリ) には、個別の設定なしで
+透過的に反映される。
 
-## M0 PoC の実行 (Windows + SteamVR)
+一方、raw tracking universe (`RawAndUncalibrated`) を直接使うアプリはこの行列を経由
+しないため、補正の対象外になる。
 
-```bash
-dotnet build
-# openvr_api.dll (SteamVR 同梱 bin\win64 または openvr リリース) を
-# src/FloorLeveler.Poc/bin/Debug/net10.0/ に配置してから:
-dotnet run --project src/FloorLeveler.Poc -- status
-dotnet run --project src/FloorLeveler.Poc -- backup
-dotnet run --project src/FloorLeveler.Poc -- tilt --roll 0.5   # プレビューのみ、Enter で revert
-dotnet run --project src/FloorLeveler.Poc -- level --commit    # 重力水平化を Live へ反映
-```
+## 動作環境
 
-## 言語 (仕様 §6)
+- Windows 10 22H2 以降 / Windows 11 (x64)
+- SteamVR がインストール済みかつ起動中
 
-日本語を既定とし、画面右上の切替で英語にできる。選択は設定に保存され、次回起動時も
-維持される (F-7)。切替は再起動不要で、表示中のメッセージもその場で書き換わる。
+床面のサンプリングを行う場合は、床に接地させられるトラッキングデバイス
+(コントローラーまたは Vive Tracker 系) が 1 台以上必要になる。1 台を床上で動かして
+複数点を取るのが基本。複数のデバイスを床に置いて使うこともできるが、記録は選択中の
+1 台からしか行われないため、デバイスを選び替えながら順に記録する。
 
-UI 文字列は `src/FloorLeveler.App/Localization/` に言語ごとの resx として置き、
-`Strings` クラスが「メンバー名 = リソースキー」の型付きアクセサを提供する。XAML は
-`{Binding L.ApplyButton}` のように束縛するため、キーの綴り誤りはコンパイル済み
-バインディングによりビルド時に落ちる。日英でキーが食い違っていないこと・未使用の
-キーが無いことは単体テストで検証している。
+**モード A (重力水平化) だけを使う場合、サンプリング用のデバイスは不要**。
+現在の設定だけから補正を算出できる (下記「使い方」を参照)。
 
-文言を追加するときは 2 つの resx と `Strings` のメンバーを揃えて足すこと
-(片方だけではテストが落ちる)。
+## インストール
 
-## 開発
+[Releases](https://github.com/limit7412/OpenVR-FloorLeveler/releases) から
+`FloorLeveler.exe` をダウンロードして実行するだけ。インストーラーもランタイムの
+事前導入も不要 (.NET ランタイムは exe に同梱)。
+
+`openvr_api.dll` を別途用意する必要はない。exe の隣や OS の検索パスに見つからない
+場合は、SteamVR に付属するものを読み込む (詳細は「openvr_api.dll の解決順」)。
+
+## 使い方
+
+1. **接続** — SteamVR を起動した状態で `FloorLeveler.exe` を実行し、「接続 / 再試行」を押す
+   - 接続時に現在の Chaperone 設定がバックアップされる。保存に失敗した場合も
+     接続は続行し、警告は出ない。確実に退避しておきたい場合は
+     「現在の設定を退避」を押し、バックアップ一覧に項目が増えたことを確認する
+2. **デバイス選択** — サンプリングに使うコントローラー / トラッカーを選ぶ
+3. **サンプリング** — 床の複数点を記録する。方式は 3 つ
+
+   | 方式 | 操作 |
+   | --- | --- |
+   | 手動 | デバイスを床に置いて「記録」(または Space) を押す |
+   | 静置方式 | 床に置いて静止させると自動で記録される |
+   | 連続方式 | 床に接地させたまま引きずると、前回の記録点から**約 5 cm 動くごとに**自動記録される |
+
+   連続方式では、持ち上げた瞬間など**速度が閾値を超えたフレーム (1 m/s 超) は自動で
+   棄却される**。手動方式にはこの判定が無いため、記録操作をした瞬間の位置がそのまま
+   入る (床に着いた状態で押すこと)。
+
+   記録されるのはデバイスの原点位置で、接地面までのオフセットは補正されない。
+   デバイスの姿勢が点ごとに違うとその分だけ推定結果もずれるため、
+   **記録時はデバイスの向きを揃える**こと。
+
+4. **推定結果の確認** — 傾き角・方位・フィット残差と、点群/床面の俯瞰・側面ビューを確認する
+   - 点群が使われるのは、有効サンプルが **3 点以上**かつ水平方向の**広がりが 30 cm 以上**
+     ある場合のみ。モード B ではこれを満たすまで精度不足の旨が表示される
+   - モード A では点群は高さ合わせにしか使われないため、この条件を満たさない点群は
+     **通知なく無視され**、回転のみが補正される (点数と広がりは推定結果の欄で確認できる)
+   - 残差が大きい場合は「RANSAC で外れ値除去」を有効にする (既定の閾値 3 mm)
+
+5. **補正モードを選ぶ**
+
+   | モード | 用途 | サンプリング |
+   | --- | --- | --- |
+   | **A: 重力水平化** | ルームセットアップの誤差で仮想床が傾いた場合。仮想床を重力水平に戻す | 不要 (取得済みなら高さ合わせに使う) |
+   | **B: 実測床面合わせ** | 物理床自体が傾いている環境で、床に置いたものの接地感を正しくしたい場合 | 必須 |
+
+6. **プレビュー → 適用** — 「プレビュー」で working copy に反映して確認し、
+   問題なければ「適用」(Ctrl+Enter) で Live へ反映する
+   - 補正量が微小 (回転 0.05° 未満かつ並進 1 mm 未満) の場合は「補正不要」として適用を抑止する
+   - 回転が 10° を超える場合は誤サンプリングの可能性が高いため、確認チェックを要求する
+   - 適用の直前にもバックアップが取られる
+
+7. **元に戻す** — 「元に戻す」(Ctrl+Z) で直前の適用を打ち消す。
+   アプリを再起動した後でも、バックアップ一覧から任意の時点へ復元できる
+
+Chaperone の境界 (コリジョン境界) は standing 座標で保存されているため、補正 C を
+順方向に適用 (`v' = C(v)`) して書き戻す。これにより、物理的な壁の位置に対して境界が
+ずれることはない。
+
+### キーボードショートカット
+
+| 操作 | キー |
+| --- | --- |
+| 記録 | `Space` |
+| 適用 | `Ctrl+Enter` |
+| 元に戻す | `Ctrl+Z` |
+
+### 言語
+
+日本語が既定。画面上部の切替で英語にできる。選択は保存され、次回起動時も維持される。
+切替に再起動は不要で、表示中のメッセージもその場で書き換わる。
+
+## バックアップと復旧
+
+Chaperone のスナップショット (S→R 行列 / seated / 境界頂点) を保存する。
+
+- **適用前** — 補正を適用する直前に必ず保存する。保存に失敗した場合は適用そのものを中止する
+- **接続時** — 接続したときにも保存するが、こちらは失敗しても接続を続行し、警告は出ない。
+  確実に退避しておきたい場合は「現在の設定を退避」を押し、
+  バックアップ一覧に項目が増えたことを確認する
+- 保存先: `%LOCALAPPDATA%\FloorLeveler\backups\`
+- 「最新のバックアップを復元」— 接続時の自動退避を除いた最新へ戻す
+- バックアップ一覧から任意の時点を選んで復元することもできる
+
+書き込みは `%LOCALAPPDATA%\FloorLeveler\` 配下のみで、管理者権限は不要。
+設定は `settings.json`、ログは `logs\` に出力される (ローテーションあり)。
+適用操作は変更前後の行列値をログに記録する。
+
+## 既知の制約
+
+- モード B は standing universe を重力非整列にするため、スカイボックスや一部アプリの
+  水平表現に違和感が生じうる。**数度以内の補正を想定範囲**とする
+- SteamVR 側でルームセットアップを再実行すると本ツールの補正は上書きされる
+  (正常動作。再補正が必要になる)
+- `IVRChaperoneSetup` は Valve のバージョン間で挙動差が報告されているため、
+  SteamVR のメジャーアップデート後は動作を確認すること
+- UI は通常のデスクトップウィンドウのみで、VR 内オーバーレイは提供しない。
+  HMD 装着中は SteamVR のデスクトップビュー経由での操作を想定している
+- raw tracking universe を直接使うアプリには補正が反映されない (上記のとおり)
+
+## ライセンス
+
+[MIT License](LICENSE)
+
+`openvr_api.dll` は同梱・再配布しておらず、実行時に既存のものを読み込む
+(exe の隣 / OS の検索パス、見つからなければ SteamVR 付属のもの)。
+
+---
+
+# 開発
 
 .NET 10 SDK が必要。
 
@@ -69,7 +147,49 @@ dotnet build
 dotnet test
 ```
 
-## 単一 exe の発行 (仕様 §8)
+## 構成
+
+Functional Core / Imperative Shell 構成を採用している。
+
+- `src/FloorLeveler.Core` — 純粋関数のみのロジック層。平面フィット (PCA / RANSAC)、
+  補正変換の算出 (モード A / B)、剛体変換 (`HmdMatrix34_t` 相当との相互変換)、
+  サンプル棄却判定、Chaperone 境界頂点の変換、2D 投影。OpenVR の型には依存しない
+- `src/FloorLeveler.OpenVr` — OpenVR interop 層。`openvr_api.dll` の FnTable を
+  P/Invoke で呼び出す薄いラッパー (`OpenVrSession` / `VrSystem` / `ChaperoneTuner`)
+- `src/FloorLeveler.Poc` — PoC コンソール。実機での S→R 行列の読み書き、微小回転の適用、
+  符号規約の検証、スナップショットの保存/復元を行う
+- `src/FloorLeveler.App` — Avalonia UI のデスクトップ GUI (`FloorLeveler.exe`)。
+  OpenVR へのアクセスは `ISessionGateway` の背後に隠し、UI ロジックを実機なしで
+  テストできるようにしている
+- `tests/` — Core / interop / ViewModel の単体テスト (xUnit)
+
+自動サンプリングの判定も可視化の投影も Core に純粋関数として置き、Shell 側は
+タイマーでポーズを供給する / メートル座標をピクセルに写して描くだけに留めている。
+
+## PoC コンソールの実行 (Windows + SteamVR)
+
+符号規約の検証や、GUI を介さない読み書きの確認に使う。
+
+```bash
+dotnet run --project src/FloorLeveler.Poc -- status
+dotnet run --project src/FloorLeveler.Poc -- backup
+dotnet run --project src/FloorLeveler.Poc -- tilt --roll 0.5   # プレビューのみ、Enter で revert
+dotnet run --project src/FloorLeveler.Poc -- level --commit    # 重力水平化を Live へ反映
+```
+
+`--commit` を付けない場合、変更は working copy とプレビュー表示のみに留まる。
+
+## UI 文字列の追加
+
+UI 文字列は `src/FloorLeveler.App/Localization/` に言語ごとの resx として置き、
+`Strings` クラスが「メンバー名 = リソースキー」の型付きアクセサを提供する。XAML は
+`{Binding L.ApplyButton}` のように束縛するため、キーの綴り誤りはコンパイル済み
+バインディングによりビルド時に落ちる。
+
+文言を追加するときは 2 つの resx と `Strings` のメンバーを揃えて足すこと
+(片方だけだと、日英のキー集合が一致することを検証しているテストが落ちる)。
+
+## 単一 exe の発行
 
 ```bash
 dotnet publish src/FloorLeveler.App -c Release -r win-x64 --self-contained \
@@ -79,49 +199,42 @@ dotnet publish src/FloorLeveler.App -c Release -r win-x64 --self-contained \
   -o publish
 ```
 
-`publish/FloorLeveler.exe` (約 48 MB) が生成される。CI でもサイズ予算
-(NF-2: 60 MB 以下) を検証している。
-
-### openvr_api.dll の扱い (仕様 §8.2)
-
-`openvr_api.dll` は exe に内包せず、実行時に次の順で探す (`OpenVrNativeLibrary`)。
-
-1. **既定の探索** — exe と同じディレクトリ、または OS の検索パス。
-   任意のバージョンを使いたい場合は exe の隣に置けばそちらが優先される
-2. **SteamVR 付属のもの** — 上で見つからない場合、OpenVR ランタイムと同じ規約で
-   `<ランタイム>\bin\win64\openvr_api.dll` を探す (`OpenVrRuntimeLocator`)
-   - `VR_OVERRIDE` — ランタイムのルートを直接指定する環境変数
-   - `openvrpaths.vrpath` の `runtime` — SteamVR が書き出す設定ファイル。場所は
-     `VR_PATHREG_OVERRIDE`、既定では `%LOCALAPPDATA%\openvr\`
-
-どちらでも見つからない場合は `DllNotFoundException` になり、GUI には
-SteamVR のインストールか dll の併置を促すメッセージが出る。
-
-SteamVR が入っていれば dll を用意する必要はなく、exe 単体で動作する。
-本ツールは `openvr_api.dll` を再配布しない。
+`publish/FloorLeveler.exe` (約 48 MB) が生成される。CI でもサイズ予算 (60 MB 以下) を
+検証している。
 
 `FloorLeveler.exe --version` はバージョンを出力して終了する (GUI を起動しない)。
 発行時に `-p:Version=1.2.3` を渡すと、その値が exe のファイルプロパティ
 (ProductVersion) と `--version` の出力になる。
 
-## リリース用ビルドの手動実行
+### openvr_api.dll の解決順
 
-GitHub Actions の **Build** ワークフローを `workflow_dispatch` で実行すると、
-公開リリースを作らずにリリース用の exe を得られる (実機確認用)。
+1. **既定の探索** — exe と同じディレクトリ、または OS の検索パス。
+   任意のバージョンを使いたい場合は exe の隣に置けばそちらが優先される
+2. **SteamVR 付属のもの** — 上で見つからない場合、OpenVR ランタイムと同じ規約で
+   `<ランタイム>\bin\win64\openvr_api.dll` を探す
+   - `VR_OVERRIDE` — ランタイムのルートを直接指定する環境変数
+   - `openvrpaths.vrpath` の `runtime` — SteamVR が書き出す設定ファイル。場所は
+     `VR_PATHREG_OVERRIDE`、既定では `%LOCALAPPDATA%\openvr\`
 
-1. Actions → Build → Run workflow
-2. `version` にバージョンを入れる (省略時は `0.0.0`)
-3. 完了後、実行結果の Artifacts から `FloorLeveler-win-x64-{version}` をダウンロード
+どちらでも見つからない場合は、SteamVR のインストールか dll の併置を促すメッセージを表示する。
 
-ワークフローの中身はリリース (下記) と同じで、テスト → 単一 exe の発行 →
-サイズ予算の確認 → スモークテストまで行う。発行手順は
-`.github/workflows/build.yml` の 1 箇所にあり、`release.yml` はこれを
-`workflow_call` で呼ぶ (手動ビルドとリリースで手順が食い違わないようにするため)。
+## ビルドとリリース (GitHub Actions)
 
-## リリース (仕様 §8.4)
+| ワークフロー | 起動条件 | 内容 |
+| --- | --- | --- |
+| `ci.yml` | `master` への push / PR | ビルド・テストと、単一 exe 発行が壊れていないことの確認 (Linux) |
+| `build.yml` | 手動 / `release.yml` から | Windows でテスト → 単一 exe 発行 → サイズ予算 → スモークテスト |
+| `release.yml` | バージョンタグの push | `build.yml` を呼び、成果物を GitHub Release へ添付 |
 
-バージョンのタグを push すると `.github/workflows/release.yml` が動き、
-タグ駆動でリリースが作られる。接頭辞 `v` の有無はどちらでもよい。
+### 手動ビルド
+
+公開リリースを作らずにリリース用の exe を得たい場合 (実機確認用など) は、
+Actions → **Build** → Run workflow を実行し、完了後に Artifacts からダウンロードする。
+`version` を省略すると `0.0.0` になる。
+
+### リリース
+
+バージョンのタグを push すると `release.yml` が動く。接頭辞 `v` の有無はどちらでもよい。
 
 ```bash
 git tag 0.1.0
@@ -129,17 +242,17 @@ git push origin 0.1.0
 ```
 
 GitHub の UI からリリースを作った場合もタグが作られるのでワークフローは動く。
-その場合はリリースが既に存在するため、ワークフローは**成果物の添付だけ**を行い、
-リリースノートは上書きしない。
+その場合はリリースが既に存在するため、**成果物の添付だけ**を行い、リリースノートは
+上書きしない。
 
-ワークフローはタグからバージョンを取り出し、`build.yml` を呼んで
-Windows ランナー上で テスト → 単一 exe の発行 (`-p:Version=` にタグの値を渡す) →
-サイズ予算の確認 → スモークテスト (exe を起動し、`--version` が正常終了して
-**タグと同じバージョンを出力**すること、ファイルプロパティのバージョンも一致する
-ことを確認) を行い、その成果物を添付した GitHub Release を作成する。
+対応するタグ形式は `[v]MAJOR.MINOR.PATCH[-プレリリース識別子]` (例: `1.2.3`、`v1.2.3-rc.1`)。
+プレリリース識別子を含むタグは、ワークフローが**リリースを新規作成する場合に限り**
+prerelease として公開される。リリースが既にある場合は成果物を添付するだけなので、
+prerelease にするかどうかは作成時の指定のままになる。ビルドメタデータ
+(`1.2.3+build.1`) を含むタグは、埋め込まれるバージョンとタグが食い違ったまま公開されるのを
+避けるため、ワークフローの冒頭で明示的に拒否する。
 
-対応するタグ形式は `[v]MAJOR.MINOR.PATCH[-プレリリース識別子]` (例: `1.2.3`、
-`v1.2.3-rc.1`)。プレリリース識別子を含むタグは prerelease として公開される
-(既存のリリースへ添付する場合は、そのリリースの設定を変更しない)。
-ビルドメタデータ (`v1.2.3+build.1`) を含むタグは、埋め込まれるバージョンとタグが
-食い違ったまま公開されるのを避けるため、ワークフローの冒頭で明示的に拒否する。
+## 経緯
+
+当初の仕様と実装の経緯は [#1](https://github.com/limit7412/OpenVR-FloorLeveler/issues/1) を参照。
+本 README が現在の仕様の一次情報であり、issue の記述と食い違う場合は本 README を正とする。
