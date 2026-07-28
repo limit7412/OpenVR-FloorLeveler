@@ -103,11 +103,12 @@ jobs:
           cat > release-notes.md <<'EOF'
           ## インストール
 
-          `FloorLeveler.exe` をダウンロードして実行してください (インストーラー不要)。
+          `FloorLeveler.exe` をダウンロードして実行してください。インストーラーも
+          追加の DLL 配置も不要です (`openvr_api.dll` は SteamVR に付属するものを
+          読み込みます)。
 
-          > **注意**: 現時点では `openvr_api.dll` (SteamVR 同梱の `bin\win64`、または
-          > OpenVR のリリース) を `FloorLeveler.exe` と同じディレクトリに配置する必要が
-          > あります。dll の exe 内包 (仕様 §8.2) は今後対応予定です。
+          `FloorLeveler.exe` と同じディレクトリに `openvr_api.dll` を置いた場合は、
+          そちらが優先されます (任意のバージョンを使いたい場合)。
 
           動作環境: Windows 10 22H2 以降 / Windows 11 (x64)、SteamVR 起動中。
           EOF
