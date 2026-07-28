@@ -24,6 +24,9 @@ on:
       artifact:
         description: '発行した exe を含む成果物の名前'
         value: ${{ jobs.build.outputs.artifact }}
+      exe:
+        description: '成果物に含まれる exe のファイル名 (バージョン入り)'
+        value: ${{ jobs.build.outputs.exe }}
 
 jobs:
   build:
@@ -31,6 +34,7 @@ jobs:
     runs-on: windows-latest
     outputs:
       artifact: ${{ steps.version.outputs.artifact }}
+      exe: ${{ steps.version.outputs.exe }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -54,7 +58,11 @@ jobs:
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          # 成果物 (zip) と、その中の exe に同じ名前を使う。展開したあとの exe
+          # 単体でもどのビルドか分かるようにするため (複数バージョンを手元に置いて
+          # 比較する場合に、ファイル名だけで区別できる)。
           echo "artifact=FloorLeveler-win-x64-$version" >> "$GITHUB_OUTPUT"
+          echo "exe=FloorLeveler-win-x64-$version.exe" >> "$GITHUB_OUTPUT"
 
       - name: Test
         run: dotnet test --configuration Release
@@ -68,24 +76,38 @@ jobs:
           -p:Version=${{ steps.version.outputs.version }}
           -o publish
 
+      # 発行の出力名は AssemblyName 由来で固定 (FloorLeveler.exe) のため、発行後に
+      # 改名する。AssemblyName 自体は変えない (アセンブリ名に依存する解決を巻き込むため)。
+      # 以降の検証は改名後のファイルに対して行う (実際に配布するものを検証するため)。
+      - name: Name the exe after its version
+        shell: bash
+        env:
+          EXE: ${{ steps.version.outputs.exe }}
+        run: mv publish/FloorLeveler.exe "publish/$EXE"
+
       - name: Check size budget (NF-2, 60MB 以下)
         shell: bash
+        env:
+          EXE: ${{ steps.version.outputs.exe }}
         run: |
-          size=$(stat -c%s publish/FloorLeveler.exe)
-          echo "FloorLeveler.exe: $((size / 1024 / 1024)) MB"
+          size=$(stat -c%s "publish/$EXE")
+          echo "$EXE: $((size / 1024 / 1024)) MB"
           test "$size" -le $((60 * 1024 * 1024))
 
       - name: Smoke test (exe 起動と --version)
         shell: pwsh
         env:
           EXPECTED: ${{ steps.version.outputs.version }}
+          EXE: ${{ steps.version.outputs.exe }}
         run: |
           $ErrorActionPreference = 'Stop'
 
           # (1) exe が起動し --version が正常終了すること。
           #     WinExe はコンソール非接続だと標準出力が捨てられるため、ファイルへ明示的に
           #     リダイレクトして確実に取得する (有効なハンドルを継承させる)。
-          $proc = Start-Process -FilePath ./publish/FloorLeveler.exe -ArgumentList '--version' `
+          $exe = "./publish/$env:EXE"
+
+          $proc = Start-Process -FilePath $exe -ArgumentList '--version' `
             -NoNewWindow -Wait -PassThru `
             -RedirectStandardOutput version.out -RedirectStandardError version.err
           $stderr = (Get-Content version.err -Raw -ErrorAction SilentlyContinue)
@@ -106,7 +128,7 @@ jobs:
 
           # (3) exe のファイルプロパティにもバージョンが埋まっていること (仕様 §8.4)。
           #     ProductVersion は InformationalVersion 由来。
-          $product = (Get-Item ./publish/FloorLeveler.exe).VersionInfo.ProductVersion.Trim()
+          $product = (Get-Item $exe).VersionInfo.ProductVersion.Trim()
           Write-Host "--version => '$stdout' / ProductVersion = $product"
           if ($product -ne $env:EXPECTED) {
             throw "ファイルプロパティのバージョン不一致: expected $env:EXPECTED, got $product"
@@ -115,5 +137,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.version.outputs.artifact }}
-          path: publish/FloorLeveler.exe
+          path: publish/${{ steps.version.outputs.exe }}
           if-no-files-found: error

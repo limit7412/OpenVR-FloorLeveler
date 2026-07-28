@@ -62,19 +62,25 @@ jobs:
           path: publish
 
       - name: Write release notes
+        env:
+          EXE: ${{ needs.build.outputs.exe }}
         run: |
+          # 本文は展開なしのヒアドキュメントで書き、exe 名だけ後から差し込む。
+          # 本文にはコードスパンのバックティックが含まれるため、展開ありにすると
+          # コマンド置換として解釈されてしまう。
           cat > release-notes.md <<'EOF'
           ## インストール
 
-          `FloorLeveler.exe` をダウンロードして実行してください。インストーラーも
+          `@EXE@` をダウンロードして実行してください。インストーラーも
           追加の DLL 配置も不要です (`openvr_api.dll` は SteamVR に付属するものを
           読み込みます)。
 
-          `FloorLeveler.exe` と同じディレクトリに `openvr_api.dll` を置いた場合は、
+          ダウンロードした exe と同じディレクトリに `openvr_api.dll` を置いた場合は、
           そちらが優先されます (任意のバージョンを使いたい場合)。
 
           動作環境: Windows 10 22H2 以降 / Windows 11 (x64)、SteamVR 起動中。
           EOF
+          sed -i "s|@EXE@|$EXE|g" release-notes.md
 
       - name: Create or update release
         env:
@@ -82,6 +88,7 @@ jobs:
           # このジョブは checkout しない (必要なのは成果物だけ) ため、gh が
           # 対象リポジトリを推測できる Git リモートが無い。明示的に指定する。
           GH_REPO: ${{ github.repository }}
+          EXE: ${{ needs.build.outputs.exe }}
         run: |
           # GitHub の UI からリリースを作ると、タグとリリースが同時にできる。
           # その場合このワークフローが走り終える頃には既にリリースが存在するため、
@@ -89,7 +96,7 @@ jobs:
           # ユーザーが書いたリリースノートは上書きしない。
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             echo "リリースが既に存在するため、成果物のみ添付します: $GITHUB_REF_NAME"
-            gh release upload "$GITHUB_REF_NAME" publish/FloorLeveler.exe --clobber
+            gh release upload "$GITHUB_REF_NAME" "publish/$EXE" --clobber
             exit 0
           fi
 
@@ -97,4 +104,4 @@ jobs:
           if [ "${{ needs.version.outputs.prerelease }}" = "true" ]; then
             flags+=(--prerelease)
           fi
-          gh release create "$GITHUB_REF_NAME" publish/FloorLeveler.exe "${flags[@]}"
+          gh release create "$GITHUB_REF_NAME" "publish/$EXE" "${flags[@]}"
