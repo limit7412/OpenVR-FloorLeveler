@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Numerics;
+using FloorLeveler.App.Localization;
 using FloorLeveler.App.Services;
 using FloorLeveler.Core;
 
@@ -21,19 +22,24 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private CorrectionResult? _pendingCorrection;
 
     private bool _isConnected;
-    private string _statusMessage = "未接続です。SteamVR を起動して「接続」を押してください。";
+
+    // ステータスと補正サマリは「文字列」ではなく「言語を受け取って文字列を作る関数」で
+    // 持つ。言語を切り替えたときに、表示中のメッセージも作り直せるようにするため。
+    private Func<Strings, string> _status = s => s.StatusNotConnected;
+    private Func<Strings, string> _correctionSummary = _ => string.Empty;
+
     private GatewayDevice? _selectedDevice;
     private CorrectionMode _mode = CorrectionMode.GravityAlign;
     private bool _useRansac;
     private FloorEstimate? _estimate;
     private FloorPlot _topPlot = FloorProjection.TopDown([]);
     private FloorPlot _sidePlot = FloorProjection.Side([], null);
-    private string _correctionSummary = string.Empty;
     private bool _isPreviewing;
     private bool _largeCorrectionAcknowledged;
     private SamplingMode _samplingMode = SamplingMode.Manual;
     private IPoseSampler? _sampler;
-    private BackupEntry? _selectedBackup;
+    private BackupListItem? _selectedBackup;
+    private AppLanguage _language;
 
     private readonly AppSettings _initialSettings;
     private readonly BackupService _backupService;
@@ -58,6 +64,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _log = log;
         _clock = clock ?? (() => DateTime.Now);
         _useRansac = _initialSettings.UseRansac;
+        _language = _initialSettings.Language;
 
         ConnectCommand = new RelayCommand(Connect, () => !IsConnected);
         RecordPointCommand = new RelayCommand(RecordPoint, () => IsConnected && SelectedDevice is not null && IsManualSampling);
@@ -102,10 +109,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// 明示的に選んで復元する用途のため、自動退避 (Auto) も種別を添えて含める
     /// (最新の自動選択では除外するが、ユーザーが指定するなら選べてよい)。
     /// </summary>
-    public ObservableCollection<BackupEntry> Backups { get; } = [];
+    public ObservableCollection<BackupListItem> Backups { get; } = [];
 
     /// <summary>一覧で選択中のバックアップ。</summary>
-    public BackupEntry? SelectedBackup
+    public BackupListItem? SelectedBackup
     {
         get => _selectedBackup;
         set
@@ -115,6 +122,35 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 RestoreSelectedCommand.RaiseCanExecuteChanged();
             }
         }
+    }
+
+    /// <summary>現在の言語の UI 文字列。XAML はここ経由で束縛する (仕様 §6)。</summary>
+    public Strings L => Strings.For(_language);
+
+    /// <summary>UI の表示言語。切り替えると表示中の文言もその場で作り直す。</summary>
+    public AppLanguage Language
+    {
+        get => _language;
+        set
+        {
+            if (SetProperty(ref _language, value))
+            {
+                OnLanguageChanged();
+            }
+        }
+    }
+
+    // ラジオ/コンボ用の個別バインディング。
+    public bool IsJapanese
+    {
+        get => _language == AppLanguage.Japanese;
+        set { if (value) Language = AppLanguage.Japanese; }
+    }
+
+    public bool IsEnglish
+    {
+        get => _language == AppLanguage.English;
+        set { if (value) Language = AppLanguage.English; }
     }
 
     public bool IsConnected
@@ -129,10 +165,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public string StatusMessage
+    public string StatusMessage => _status(L);
+
+    /// <summary>ステータス文言を差し替える (言語ではなく「作り方」を保持する)。</summary>
+    private void SetStatus(Func<Strings, string> text)
     {
-        get => _statusMessage;
-        private set => SetProperty(ref _statusMessage, value);
+        _status = text;
+        OnPropertyChanged(nameof(StatusMessage));
     }
 
     public GatewayDevice? SelectedDevice
@@ -160,12 +199,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 OnPropertyChanged(nameof(IsManualSampling));
                 OnPropertyChanged(nameof(IsAutoSampling));
                 RecordPointCommand.RaiseCanExecuteChanged();
-                StatusMessage = value switch
+                SetStatus(value switch
                 {
-                    SamplingMode.Stillness => "静置方式: デバイスを床に置いて静止させると自動記録します。",
-                    SamplingMode.Continuous => "連続方式: 床上でデバイスを引きずると自動記録します。",
-                    _ => "手動方式: 「記録」ボタンまたは Space で記録します。",
-                };
+                    SamplingMode.Stillness => s => s.StatusStillnessMode,
+                    SamplingMode.Continuous => s => s.StatusContinuousMode,
+                    _ => s => s.StatusManualMode,
+                });
             }
         }
     }
@@ -222,6 +261,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     public int PointCount => _points.Count;
 
+    /// <summary>記録点数のラベル (語順が言語で変わるため書式ごとリソースに置く)。</summary>
+    public string PointCountText => L.PointCountLabel(_points.Count);
+
+    /// <summary>広がりのラベル。</summary>
+    public string SpreadLabelText => L.SpreadLabel(SpreadText);
+
     /// <summary>俯瞰ビュー (XZ 平面) の投影データ (仕様 F-4)。</summary>
     public FloorPlot TopPlot
     {
@@ -241,18 +286,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         : $"{_estimate.Quality.SpreadMeters * 100f:F0} cm";
 
     public string TiltText => _estimate?.Plane is { } p
-        ? $"{p.TiltAngleDegrees:F2}° (方位 {p.TiltAzimuthDegrees:F0}°)"
+        ? L.TiltValue(p.TiltAngleDegrees, p.TiltAzimuthDegrees)
         : "-";
 
     public string ResidualText => _estimate?.Plane is { } p
-        ? $"RMS {p.RmsResidual * 1000f:F1} mm / 最大 {p.MaxResidual * 1000f:F1} mm"
+        ? L.ResidualValue(p.RmsResidual * 1000f, p.MaxResidual * 1000f)
         : "-";
 
-    public string CorrectionSummary
-    {
-        get => _correctionSummary;
-        private set => SetProperty(ref _correctionSummary, value);
-    }
+    public string CorrectionSummary => _correctionSummary(L);
 
     public bool IsPreviewing
     {
@@ -311,7 +352,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             RefreshBackups(); // 既存の退避も含めて一覧を初期化する
 
             _log?.Log("接続しました。");
-            StatusMessage = "SteamVR に接続しました。";
+            SetStatus(s => s.StatusConnected);
         }
         catch (Exception ex)
         {
@@ -320,7 +361,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             _gateway?.Dispose();
             _gateway = null;
             IsConnected = false;
-            StatusMessage = $"接続に失敗しました: {ex.Message}";
+
+            // dll が無いケースだけは OpenVR のメッセージより具体的な案内を出す。
+            SetStatus(ex is SessionUnavailableException { Reason: SessionFailure.NativeLibraryMissing }
+                ? s => s.StatusNativeLibraryMissing
+                : s => s.StatusConnectFailed(ex.Message));
         }
     }
 
@@ -356,14 +401,15 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         var pose = _gateway.GetDevicePose(SelectedDevice.Index);
         if (pose is null)
         {
-            StatusMessage = "トラッキングが有効なサンプルを取得できませんでした。";
+            SetStatus(s => s.StatusNoValidPose);
             return;
         }
 
         // デバイス原点ではなく接地点を記録する (仕様 F-1 の接地オフセット)。
         var profile = ContactProfileFor(SelectedDevice);
         _points.Add(profile.ContactPoint(pose.Value));
-        StatusMessage = $"サンプルを記録しました (計 {_points.Count} 点)。";
+        var recorded = _points.Count;
+        SetStatus(s => s.StatusSampleRecorded(recorded));
         Recompute();
     }
 
@@ -421,7 +467,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         if (_sampler.Feed(timestamp, pose.Value) is { } contact)
         {
             _points.Add(contact);
-            StatusMessage = $"自動記録しました (計 {_points.Count} 点)。";
+            var recorded = _points.Count;
+            SetStatus(s => s.StatusAutoRecorded(recorded));
             Recompute();
         }
     }
@@ -430,7 +477,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     {
         _points.Clear();
         _sampler?.Reset(); // 自動サンプラーの再武装・間隔状態も初期化する
-        StatusMessage = "サンプルをクリアしました。";
+        SetStatus(s => s.StatusPointsCleared);
         Recompute();
     }
 
@@ -452,16 +499,19 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _largeCorrectionAcknowledged = false;
         OnPropertyChanged(nameof(LargeCorrectionAcknowledged));
 
-        CorrectionSummary = _pendingCorrection switch
+        _correctionSummary = _pendingCorrection switch
         {
-            null => "補正を算出できません。",
-            { IsNegligible: true } => "補正不要です (回転 0.05° 未満かつ並進 1 mm 未満)。",
-            { } c => $"回転 {c.RotationAngleDegrees:F2}°、高さ変化 {c.HeightChangeMeters * 1000f:F1} mm"
-                + (c.RequiresConfirmation ? " (10° 超: 適用前に確認が必要)" : string.Empty),
+            null => s => s.StatusCorrectionUnavailable,
+            { IsNegligible: true } => s => s.StatusCorrectionNegligible,
+            { } c => s => s.CorrectionSummaryValue(c.RotationAngleDegrees, c.HeightChangeMeters * 1000f)
+                + (c.RequiresConfirmation ? s.CorrectionNeedsConfirmationSuffix : string.Empty),
         };
+        OnPropertyChanged(nameof(CorrectionSummary));
 
         OnPropertyChanged(nameof(PointCount));
+        OnPropertyChanged(nameof(PointCountText));
         OnPropertyChanged(nameof(SpreadText));
+        OnPropertyChanged(nameof(SpreadLabelText));
         OnPropertyChanged(nameof(TiltText));
         OnPropertyChanged(nameof(ResidualText));
         OnPropertyChanged(nameof(IsSamplingRequired));
@@ -478,7 +528,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         catch (Exception ex)
         {
             // ChaperoneSetup の読み取り失敗などは「補正を算出できません」に落とす。
-            StatusMessage = $"補正の算出に失敗しました: {ex.Message}";
+            SetStatus(s => s.StatusCorrectionComputeFailed(ex.Message));
             return null;
         }
     }
@@ -536,13 +586,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             _gateway.ApplyCorrection(_pendingCorrection);
             _gateway.ShowPreview();
             IsPreviewing = true;
-            StatusMessage = "プレビュー中です。「適用」で確定、「プレビュー破棄」で破棄します。";
+            SetStatus(s => s.StatusPreviewing);
         }
         catch (Exception ex)
         {
             _gateway.Revert();
             IsPreviewing = false;
-            StatusMessage = $"プレビューに失敗しました: {ex.Message}";
+            SetStatus(s => s.StatusPreviewFailed(ex.Message));
         }
     }
 
@@ -554,7 +604,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
 
         DiscardPreview();
-        StatusMessage = "プレビューを破棄しました。";
+        SetStatus(s => s.StatusPreviewDiscarded);
     }
 
     private void Apply()
@@ -575,7 +625,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             // この退避に失敗した場合はファイル復旧手段を確保できないため適用を中止する。
             if (!TrySaveBackup(BackupKind.PreApply))
             {
-                StatusMessage = "適用前のバックアップに失敗したため、適用を中止しました。";
+                SetStatus(s => s.StatusBackupBeforeApplyFailed);
                 return;
             }
 
@@ -584,7 +634,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             if (!_gateway.Commit())
             {
                 _gateway.Revert();
-                StatusMessage = "適用に失敗したため元に戻しました。";
+                SetStatus(s => s.StatusApplyFailedReverted);
                 return;
             }
 
@@ -605,7 +655,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             // standing 座標系が変わったため、旧座標の履歴を持つサンプラーを初期化する。
             _sampler?.Reset();
             Recompute();
-            StatusMessage = "補正を適用しました。";
+            SetStatus(s => s.StatusApplied);
             UndoCommand.RaiseCanExecuteChanged();
         }
         catch (Exception ex)
@@ -613,7 +663,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             // 途中失敗時は中途半端な状態を commit しない (仕様 NF-5)。
             _gateway.Revert();
             IsPreviewing = false;
-            StatusMessage = $"適用に失敗しました: {ex.Message}";
+            SetStatus(s => s.StatusApplyFailed(ex.Message));
         }
     }
 
@@ -643,7 +693,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             if (!_gateway.Commit())
             {
                 _gateway.Revert();
-                StatusMessage = "元に戻す操作に失敗しました。";
+                SetStatus(s => s.StatusUndoFailed);
                 return;
             }
 
@@ -658,13 +708,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
             _sampler?.Reset();
             Recompute();
-            StatusMessage = "直前の補正を元に戻しました。";
+            SetStatus(s => s.StatusUndone);
             UndoCommand.RaiseCanExecuteChanged();
         }
         catch (Exception ex)
         {
             _gateway.Revert();
-            StatusMessage = $"元に戻す操作に失敗しました: {ex.Message}";
+            SetStatus(s => s.StatusUndoFailedWithReason(ex.Message));
         }
     }
 
@@ -679,13 +729,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             var path = _backupService.Save(_gateway.CaptureSnapshot(), _clock(), BackupKind.Manual);
             _log?.Log($"バックアップを保存: {path}");
-            StatusMessage = $"バックアップを保存しました: {Path.GetFileName(path)}";
+            var fileName = Path.GetFileName(path);
+            SetStatus(s => s.StatusBackupSaved(fileName));
             RestoreLatestCommand.RaiseCanExecuteChanged();
             RefreshBackups();
         }
         catch (Exception ex)
         {
-            StatusMessage = $"バックアップに失敗しました: {ex.Message}";
+            SetStatus(s => s.StatusBackupFailed(ex.Message));
         }
     }
 
@@ -701,7 +752,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         var candidates = _backupService.RestorableCandidates();
         if (candidates.Count == 0)
         {
-            StatusMessage = "復元できるバックアップがありません。";
+            SetStatus(s => s.StatusNoRestorableBackup);
             return;
         }
 
@@ -721,26 +772,27 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        StatusMessage = "有効なバックアップがありませんでした (すべて復元に失敗)。";
+        SetStatus(s => s.StatusAllRestoresFailed);
     }
 
     /// <summary>一覧で選択したバックアップへ復元する (仕様 F-6 の任意時点への復元)。</summary>
     private void RestoreSelected()
     {
-        if (_gateway is null || SelectedBackup is not { } entry)
+        if (_gateway is null || SelectedBackup is not { } item)
         {
             return;
         }
 
         // 明示的に指定された 1 件のみを試し、失敗しても他候補へは進まない
         // (ユーザーが選んだ時点と異なる状態を黙って復元しないため)。
-        if (!TryRestore(entry))
+        if (!TryRestore(item.Entry))
         {
-            StatusMessage = $"バックアップを復元できませんでした: {entry.DisplayName}";
+            var name = item.DisplayName;
+            SetStatus(s => s.StatusRestoreFailed(name));
             return;
         }
 
-        AfterRestore(entry, skipped: 0);
+        AfterRestore(item.Entry, skipped: 0);
     }
 
     /// <summary>
@@ -800,9 +852,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _lastApplied = null;
         _log?.Log($"バックアップを復元: {entry.Path}" + (skipped > 0 ? $" ({skipped} 件をスキップ)" : string.Empty));
         Recompute();
-        StatusMessage = skipped > 0
-            ? $"バックアップを復元しました: {entry.Timestamp} ({skipped} 件をスキップ)"
-            : $"バックアップを復元しました: {entry.Timestamp}";
+        var timestamp = entry.Timestamp;
+        SetStatus(skipped > 0
+            ? s => s.StatusRestoredWithSkips(timestamp, skipped)
+            : s => s.StatusRestored(timestamp));
         UndoCommand.RaiseCanExecuteChanged();
     }
 
@@ -812,14 +865,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     /// </summary>
     private void RefreshBackups()
     {
-        var previous = SelectedBackup?.Path;
+        var previous = SelectedBackup?.Entry.Path;
         Backups.Clear();
         foreach (var entry in _backupService.List())
         {
-            Backups.Add(entry);
+            Backups.Add(BackupListItem.Create(entry, L));
         }
 
-        SelectedBackup = Backups.FirstOrDefault(e => e.Path == previous);
+        SelectedBackup = Backups.FirstOrDefault(e => e.Entry.Path == previous);
         RestoreSelectedCommand.RaiseCanExecuteChanged();
     }
 
@@ -885,6 +938,26 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(CanApply));
     }
 
+    /// <summary>
+    /// 言語が変わったので、言語に依存する表示をすべて作り直す。
+    /// 文言を関数で保持しているため、表示中のステータスもその場で切り替わる。
+    /// </summary>
+    private void OnLanguageChanged()
+    {
+        OnPropertyChanged(nameof(L));
+        OnPropertyChanged(nameof(IsJapanese));
+        OnPropertyChanged(nameof(IsEnglish));
+        OnPropertyChanged(nameof(StatusMessage));
+        OnPropertyChanged(nameof(CorrectionSummary));
+        OnPropertyChanged(nameof(TiltText));
+        OnPropertyChanged(nameof(ResidualText));
+        OnPropertyChanged(nameof(PointCountText));
+        OnPropertyChanged(nameof(SpreadLabelText));
+
+        // 一覧のラベルは生成済みの文字列なので、作り直さないと旧言語のまま残る。
+        RefreshBackups();
+    }
+
     /// <summary>現在の UI 状態を反映した設定を返す (終了時の保存用、仕様 F-7)。</summary>
     public AppSettings SnapshotSettings(double windowWidth, double windowHeight)
         => _initialSettings with
@@ -892,6 +965,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             UseRansac = _useRansac,
             WindowWidth = windowWidth,
             WindowHeight = windowHeight,
+            Language = _language,
         };
 
     public void Dispose()

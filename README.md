@@ -28,6 +28,8 @@ Functional Core / Imperative Shell 構成を採用している。
   復元は「最新のバックアップを復元」(自動退避を除く最新へ) に加え、バックアップ
   一覧から任意時点を選んで復元できる (F-6)。
   キーボードショートカット (記録=Space、適用=Ctrl+Enter、元に戻す=Ctrl+Z)。
+  UI 文字列は `Localization/StringsJa.resx` / `StringsEn.resx` に分離し、日本語と
+  英語を実行中に切り替えられる (§6)。
 - `tests/FloorLeveler.Core.Tests` — Core の単体テスト (xUnit)。
 - `tests/FloorLeveler.OpenVr.Tests` — interop 層の構造体レイアウト・変換テスト。
 - `tests/FloorLeveler.App.Tests` — GUI の ViewModel テスト (fake gateway 使用)。
@@ -43,6 +45,20 @@ dotnet run --project src/FloorLeveler.Poc -- backup
 dotnet run --project src/FloorLeveler.Poc -- tilt --roll 0.5   # プレビューのみ、Enter で revert
 dotnet run --project src/FloorLeveler.Poc -- level --commit    # 重力水平化を Live へ反映
 ```
+
+## 言語 (仕様 §6)
+
+日本語を既定とし、画面右上の切替で英語にできる。選択は設定に保存され、次回起動時も
+維持される (F-7)。切替は再起動不要で、表示中のメッセージもその場で書き換わる。
+
+UI 文字列は `src/FloorLeveler.App/Localization/` に言語ごとの resx として置き、
+`Strings` クラスが「メンバー名 = リソースキー」の型付きアクセサを提供する。XAML は
+`{Binding L.ApplyButton}` のように束縛するため、キーの綴り誤りはコンパイル済み
+バインディングによりビルド時に落ちる。日英でキーが食い違っていないこと・未使用の
+キーが無いことは単体テストで検証している。
+
+文言を追加するときは 2 つの resx と `Strings` のメンバーを揃えて足すこと
+(片方だけではテストが落ちる)。
 
 ## 開発
 

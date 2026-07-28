@@ -20,13 +20,12 @@ public sealed class OpenVrGateway : ISessionGateway
         }
         catch (OpenVrException ex)
         {
-            throw new SessionUnavailableException(ex.Message, ex);
+            throw new SessionUnavailableException(SessionFailure.Runtime, ex.Message, ex);
         }
         catch (DllNotFoundException ex)
         {
-            throw new SessionUnavailableException(
-                "openvr_api.dll が見つかりません。SteamVR をインストールするか、" +
-                "FloorLeveler.exe と同じディレクトリに openvr_api.dll を置いてください。", ex);
+            // 文言は言語に依存するため、ここでは理由だけを伝える。
+            throw new SessionUnavailableException(SessionFailure.NativeLibraryMissing, ex.Message, ex);
         }
     }
 

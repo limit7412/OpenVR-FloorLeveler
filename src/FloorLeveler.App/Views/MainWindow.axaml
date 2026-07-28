@@ -7,7 +7,7 @@
         x:DataType="vm:MainViewModel"
         Width="720" Height="900"
         MinWidth="560" MinHeight="640"
-        Title="FloorLeveler — 床面水平補正">
+        Title="{Binding L.WindowTitle}">
 
   <!-- キーボードショートカット (仕様 §6): 適用=Ctrl+Enter、元に戻す=Ctrl+Z。
        記録=Space は入力部品 (チェックボックス等) の操作を奪わないようコードビハインドで扱う。 -->
@@ -23,14 +23,24 @@
       <Border Background="#20808080" CornerRadius="6" Padding="12">
         <StackPanel Spacing="8">
           <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" />
-          <Button Content="接続 / 再試行" Command="{Binding ConnectCommand}" />
+          <StackPanel Orientation="Horizontal" Spacing="16">
+            <Button Content="{Binding L.ConnectButton}" Command="{Binding ConnectCommand}" />
+            <!-- 言語切替 (仕様 §6)。選択は設定に保存される (F-7)。 -->
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+              <TextBlock Text="{Binding L.LanguageLabel}" VerticalAlignment="Center" />
+              <RadioButton GroupName="language" Content="{Binding L.LanguageJapanese}"
+                           IsChecked="{Binding IsJapanese}" />
+              <RadioButton GroupName="language" Content="{Binding L.LanguageEnglish}"
+                           IsChecked="{Binding IsEnglish}" />
+            </StackPanel>
+          </StackPanel>
         </StackPanel>
       </Border>
 
       <!-- デバイス選択とサンプリング -->
       <Border BorderBrush="#40808080" BorderThickness="1" CornerRadius="6" Padding="12">
         <StackPanel Spacing="8">
-          <TextBlock Text="デバイス選択とサンプリング" FontWeight="Bold" />
+          <TextBlock Text="{Binding L.SamplingHeader}" FontWeight="Bold" />
           <ComboBox ItemsSource="{Binding Devices}"
                     SelectedItem="{Binding SelectedDevice}"
                     HorizontalAlignment="Stretch">
@@ -41,33 +51,36 @@
             </ComboBox.ItemTemplate>
           </ComboBox>
           <StackPanel Orientation="Horizontal" Spacing="16">
-            <RadioButton GroupName="sampling" Content="手動" IsChecked="{Binding IsManualSamplingSelected}" />
-            <RadioButton GroupName="sampling" Content="静置方式" IsChecked="{Binding IsStillnessSampling}" />
-            <RadioButton GroupName="sampling" Content="連続方式" IsChecked="{Binding IsContinuousSampling}" />
+            <RadioButton GroupName="sampling" Content="{Binding L.SamplingModeManual}"
+                         IsChecked="{Binding IsManualSamplingSelected}" />
+            <RadioButton GroupName="sampling" Content="{Binding L.SamplingModeStillness}"
+                         IsChecked="{Binding IsStillnessSampling}" />
+            <RadioButton GroupName="sampling" Content="{Binding L.SamplingModeContinuous}"
+                         IsChecked="{Binding IsContinuousSampling}" />
           </StackPanel>
           <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button Content="記録" Command="{Binding RecordPointCommand}" ToolTip.Tip="Space" />
-            <Button Content="クリア" Command="{Binding ClearPointsCommand}" />
-            <TextBlock VerticalAlignment="Center" Text="{Binding PointCount, StringFormat='記録点数: {0}'}" />
-            <TextBlock VerticalAlignment="Center" Text="{Binding SpreadText, StringFormat='広がり: {0}'}" />
+            <Button Content="{Binding L.RecordButton}" Command="{Binding RecordPointCommand}" ToolTip.Tip="Space" />
+            <Button Content="{Binding L.ClearButton}" Command="{Binding ClearPointsCommand}" />
+            <TextBlock VerticalAlignment="Center" Text="{Binding PointCountText}" />
+            <TextBlock VerticalAlignment="Center" Text="{Binding SpreadLabelText}" />
           </StackPanel>
           <TextBlock FontSize="11" Foreground="#A0808080" TextWrapping="Wrap"
                      IsVisible="{Binding IsSamplingRequired}"
-                     Text="モード B は床にデバイスを置いて 3 点以上・広がり 30 cm 以上を記録してください。" />
+                     Text="{Binding L.SamplingHint}" />
         </StackPanel>
       </Border>
 
       <!-- 推定結果 -->
       <Border BorderBrush="#40808080" BorderThickness="1" CornerRadius="6" Padding="12">
         <StackPanel Spacing="6">
-          <TextBlock Text="推定結果" FontWeight="Bold" />
+          <TextBlock Text="{Binding L.EstimateHeader}" FontWeight="Bold" />
           <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="4">
-            <TextBlock Grid.Row="0" Grid.Column="0" Text="傾き:" />
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding L.TiltLabel}" />
             <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding TiltText}" />
-            <TextBlock Grid.Row="1" Grid.Column="0" Text="残差:" />
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding L.ResidualLabel}" />
             <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ResidualText}" />
             <CheckBox Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
-                      Content="RANSAC で外れ値除去" IsChecked="{Binding UseRansac}" />
+                      Content="{Binding L.UseRansacLabel}" IsChecked="{Binding UseRansac}" />
           </Grid>
         </StackPanel>
       </Border>
@@ -75,41 +88,41 @@
       <!-- 点群 / 床面の可視化 (仕様 F-4) -->
       <Border BorderBrush="#40808080" BorderThickness="1" CornerRadius="6" Padding="12">
         <StackPanel Spacing="8">
-          <TextBlock Text="点群 / 床面の可視化" FontWeight="Bold" />
+          <TextBlock Text="{Binding L.PlotHeader}" FontWeight="Bold" />
           <Grid ColumnDefinitions="*,12,*">
             <StackPanel Grid.Column="0" Spacing="4">
-              <TextBlock Text="俯瞰 (真上から)" FontSize="12" Foreground="#A0808080" />
+              <TextBlock Text="{Binding L.TopViewLabel}" FontSize="12" Foreground="#A0808080" />
               <ctl:FloorPlotControl Plot="{Binding TopPlot}" EqualAspect="True" Height="200" />
             </StackPanel>
             <StackPanel Grid.Column="2" Spacing="4">
-              <TextBlock Text="側面 (傾き方向の断面)" FontSize="12" Foreground="#A0808080" />
+              <TextBlock Text="{Binding L.SideViewLabel}" FontSize="12" Foreground="#A0808080" />
               <ctl:FloorPlotControl Plot="{Binding SidePlot}" EqualAspect="False" Height="200" />
             </StackPanel>
           </Grid>
           <TextBlock FontSize="11" Foreground="#A0808080" TextWrapping="Wrap"
-                     Text="青点=記録した接地点、橙線=推定床面。側面ビューは傾きを見やすくするため縦横の縮尺が異なります。" />
+                     Text="{Binding L.PlotHint}" />
         </StackPanel>
       </Border>
 
       <!-- 補正 -->
       <Border BorderBrush="#40808080" BorderThickness="1" CornerRadius="6" Padding="12">
         <StackPanel Spacing="8">
-          <TextBlock Text="補正" FontWeight="Bold" />
+          <TextBlock Text="{Binding L.CorrectionHeader}" FontWeight="Bold" />
           <StackPanel Orientation="Horizontal" Spacing="16">
-            <RadioButton GroupName="mode" Content="モード A: 重力水平化"
+            <RadioButton GroupName="mode" Content="{Binding L.ModeGravityAlign}"
                          IsChecked="{Binding !UseMeasuredFloorMode}" />
-            <RadioButton GroupName="mode" Content="モード B: 実測床面合わせ"
+            <RadioButton GroupName="mode" Content="{Binding L.ModeMeasuredFloor}"
                          IsChecked="{Binding UseMeasuredFloorMode}" />
           </StackPanel>
           <TextBlock Text="{Binding CorrectionSummary}" TextWrapping="Wrap" />
-          <CheckBox Content="大きな補正 (10° 超) を理解した上で適用する"
+          <CheckBox Content="{Binding L.LargeCorrectionAcknowledge}"
                     IsVisible="{Binding NeedsConfirmation}"
                     IsChecked="{Binding LargeCorrectionAcknowledged}" />
           <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button Content="プレビュー" Command="{Binding PreviewCommand}" />
-            <Button Content="プレビュー破棄" Command="{Binding CancelPreviewCommand}" />
-            <Button Content="適用" Command="{Binding ApplyCommand}" ToolTip.Tip="Ctrl+Enter" />
-            <Button Content="元に戻す" Command="{Binding UndoCommand}" ToolTip.Tip="Ctrl+Z" />
+            <Button Content="{Binding L.PreviewButton}" Command="{Binding PreviewCommand}" />
+            <Button Content="{Binding L.CancelPreviewButton}" Command="{Binding CancelPreviewCommand}" />
+            <Button Content="{Binding L.ApplyButton}" Command="{Binding ApplyCommand}" ToolTip.Tip="Ctrl+Enter" />
+            <Button Content="{Binding L.UndoButton}" Command="{Binding UndoCommand}" ToolTip.Tip="Ctrl+Z" />
           </StackPanel>
         </StackPanel>
       </Border>
@@ -117,29 +130,29 @@
       <!-- バックアップ / 復元 (仕様 F-6) -->
       <Border BorderBrush="#40808080" BorderThickness="1" CornerRadius="6" Padding="12">
         <StackPanel Spacing="8">
-          <TextBlock Text="バックアップ / 復元" FontWeight="Bold" />
+          <TextBlock Text="{Binding L.BackupHeader}" FontWeight="Bold" />
           <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button Content="現在の設定を退避" Command="{Binding BackupCommand}" />
-            <Button Content="最新のバックアップを復元" Command="{Binding RestoreLatestCommand}" />
+            <Button Content="{Binding L.BackupButton}" Command="{Binding BackupCommand}" />
+            <Button Content="{Binding L.RestoreLatestButton}" Command="{Binding RestoreLatestCommand}" />
           </StackPanel>
 
           <!-- 任意時点への復元 (仕様 F-6) -->
-          <TextBlock Text="任意時点への復元" FontSize="12" Foreground="#A0808080" />
+          <TextBlock Text="{Binding L.RestoreAnyLabel}" FontSize="12" Foreground="#A0808080" />
           <ListBox ItemsSource="{Binding Backups}" SelectedItem="{Binding SelectedBackup}"
                    Height="120">
             <ListBox.ItemTemplate>
-              <DataTemplate x:DataType="svc:BackupEntry">
+              <DataTemplate x:DataType="vm:BackupListItem">
                 <TextBlock Text="{Binding DisplayName}" />
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>
           <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button Content="選択したバックアップを復元" Command="{Binding RestoreSelectedCommand}" />
-            <Button Content="一覧を更新" Command="{Binding RefreshBackupsCommand}" />
+            <Button Content="{Binding L.RestoreSelectedButton}" Command="{Binding RestoreSelectedCommand}" />
+            <Button Content="{Binding L.RefreshBackupsButton}" Command="{Binding RefreshBackupsCommand}" />
           </StackPanel>
 
           <TextBlock FontSize="11" Foreground="#A0808080" TextWrapping="Wrap"
-                     Text="接続時に自動で退避されます。「最新のバックアップを復元」は自動退避を除いた最新を、一覧からの復元は選択した時点をそのまま Live へ反映します (保存先: %LOCALAPPDATA%\FloorLeveler\backups)。" />
+                     Text="{Binding L.BackupHint}" />
         </StackPanel>
       </Border>
 

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using FloorLeveler.App.Localization;
 
 namespace FloorLeveler.App.Services;
 
@@ -17,6 +18,9 @@ public sealed record AppSettings
     public double WindowWidth { get; init; } = 720;
 
     public double WindowHeight { get; init; } = 900;
+
+    /// <summary>UI の表示言語 (仕様 §6)。既定は日本語。</summary>
+    public AppLanguage Language { get; init; } = AppLanguage.Japanese;
 
     public static AppSettings Load()
     {
@@ -53,6 +57,6 @@ public sealed record AppSettings
 }
 
 // trim 安全な JSON シリアライズ (仕様 §8.2)。
-[JsonSourceGenerationOptions(WriteIndented = true)]
+[JsonSourceGenerationOptions(WriteIndented = true, Converters = [typeof(JsonStringEnumConverter<AppLanguage>)])]
 [JsonSerializable(typeof(AppSettings))]
 internal partial class SettingsJsonContext : JsonSerializerContext;
