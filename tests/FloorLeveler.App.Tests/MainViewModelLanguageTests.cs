@@ -1,4 +1,6 @@
 using System.Numerics;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using FloorLeveler.App.Localization;
 using FloorLeveler.App.Services;
 using FloorLeveler.App.ViewModels;
@@ -283,6 +285,38 @@ public class MainViewModelLanguageTests : IDisposable
             Localized.En.StatusApplyFailed(
                 Localized.En.ErrorChaperoneReadFailed("GetWorkingCollisionBoundsInfo")),
             vm.StatusMessage);
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(999)]
+    [InlineData(-1)]
+    public void UndefinedLanguageValue_FallsBackToJapanese(int raw)
+    {
+        // 設定ファイルが壊れて未定義の列挙値が入っても既定値で起動する (仕様 F-7)。
+        // 放置すると、どちらの言語も選択されていない状態になり、終了時に不正値が
+        // 再保存されてしまう。
+        var settings = new AppSettings { Language = (AppLanguage)raw };
+
+        Assert.Equal(AppLanguage.Japanese, settings.Language);
+
+        var vm = Create(settings);
+        Assert.True(vm.IsJapanese);
+        Assert.False(vm.IsEnglish);
+        Assert.Equal(AppLanguage.Japanese, vm.SnapshotSettings(800, 600).Language);
+    }
+
+    [Fact]
+    public void UndefinedLanguageValue_FromJson_FallsBackToJapanese()
+    {
+        // JsonStringEnumConverter は既定で整数値も受け付けるため、例外にはならず
+        // 未定義値として入ってくる経路も塞いでおく。
+        var settings = JsonSerializer.Deserialize<AppSettings>(
+            """{"Language": 999}""",
+            new JsonSerializerOptions { Converters = { new JsonStringEnumConverter<AppLanguage>() } });
+
+        Assert.NotNull(settings);
+        Assert.Equal(AppLanguage.Japanese, settings.Language);
     }
 
     [Fact]
