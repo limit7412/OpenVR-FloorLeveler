@@ -4,13 +4,16 @@ using FloorLeveler.App.Localization;
 
 namespace FloorLeveler.App.Services;
 
-/// <summary>永続化する設定 (仕様 F-7)。破損・不在時は既定値で起動する。</summary>
+/// <summary>
+/// 永続化する設定 (仕様 F-7)。破損・不在時は既定値で起動する。
+/// 実際に読み書きされる項目だけを持つ。使われていない項目を残すと、設定ファイルに
+/// 現れるのに変更しても何も起きない (0.1.0 までの RecordDelaySeconds /
+/// ContinuousIntervalMs がこの状態だった)。旧版が書いた設定ファイルにそれらのキーが
+/// 残っていても、<c>System.Text.Json</c> は既定で未知のメンバーを読み飛ばすため、
+/// そのまま読み込める。
+/// </summary>
 public sealed record AppSettings
 {
-    public int RecordDelaySeconds { get; init; } = 3;
-
-    public int ContinuousIntervalMs { get; init; } = 100;
-
     public bool UseRansac { get; init; }
 
     public float RansacThresholdMeters { get; init; } = 0.003f;
