@@ -256,4 +256,40 @@
     <value> (over 10°: confirmation required before applying)</value>
     <comment>CorrectionSummaryValue の末尾に連結する</comment>
   </data>
+  <data name="ErrorInitializationFailed" xml:space="preserve">
+    <value>Could not initialize OpenVR: {0}</value>
+    <comment>{0}=OpenVR のエラー記述 (翻訳できないため原文)</comment>
+  </data>
+  <data name="ErrorInterfaceVersionUnsupported" xml:space="preserve">
+    <value>The SteamVR runtime does not provide interface {0}. Check your SteamVR version against the versions this tool supports.</value>
+    <comment>{0}=インターフェイス名</comment>
+  </data>
+  <data name="ErrorInterfaceUnavailable" xml:space="preserve">
+    <value>Could not obtain the interface: {0}</value>
+    <comment>{0}=インターフェイス名とエラー記述</comment>
+  </data>
+  <data name="ErrorChaperoneReadFailed" xml:space="preserve">
+    <value>Could not read the Chaperone settings: {0}</value>
+    <comment>{0}=呼び出した OpenVR API 名</comment>
+  </data>
+  <data name="PlotNoSamples" xml:space="preserve">
+    <value>No samples</value>
+    <comment>プロットに描くデータが無いときの表示</comment>
+  </data>
+  <data name="PlotAxisX" xml:space="preserve">
+    <value>X (m)</value>
+    <comment>俯瞰ビューの横軸</comment>
+  </data>
+  <data name="PlotAxisZ" xml:space="preserve">
+    <value>Z (m)</value>
+    <comment>俯瞰ビューの縦軸</comment>
+  </data>
+  <data name="PlotAxisTiltDirection" xml:space="preserve">
+    <value>Tilt direction u (m)</value>
+    <comment>側面ビューの横軸</comment>
+  </data>
+  <data name="PlotAxisHeight" xml:space="preserve">
+    <value>Height Y (m)</value>
+    <comment>側面ビューの縦軸</comment>
+  </data>
 </root>

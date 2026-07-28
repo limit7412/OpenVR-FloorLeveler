@@ -53,5 +53,36 @@ internal static partial class NativeMethods
     }
 }
 
+/// <summary>
+/// OpenVR 呼び出しの失敗種別。表示する文言は言語に依存するため、この層では
+/// 種別と (翻訳できない) 詳細だけを持ち、文章の組み立ては UI 側に委ねる。
+/// </summary>
+public enum OpenVrFailure
+{
+    /// <summary>VR_Init に失敗した。詳細は OpenVR のエラー記述 (英語)。</summary>
+    InitializationFailed,
+
+    /// <summary>ランタイムが必要なインターフェイスバージョンを提供していない。詳細はその名前。</summary>
+    InterfaceVersionUnsupported,
+
+    /// <summary>インターフェイス (FnTable) を取得できなかった。詳細は名前とエラー記述。</summary>
+    InterfaceUnavailable,
+
+    /// <summary>Chaperone の working copy を読み取れなかった。詳細は呼び出した API 名。</summary>
+    ChaperoneReadFailed,
+}
+
 /// <summary>OpenVR API の呼び出しに失敗した際の例外。</summary>
-public sealed class OpenVrException(string message) : Exception(message);
+/// <param name="reason">失敗の種別。UI はこれを見て言語に応じた文言を選ぶ。</param>
+/// <param name="detail">
+/// 翻訳できない詳細 (OpenVR のエラー記述や API 名)。どの言語でもそのまま見せる。
+/// </param>
+public sealed class OpenVrException(OpenVrFailure reason, string detail)
+    : Exception($"{reason}: {detail}")
+{
+    /// <summary>失敗の種別。</summary>
+    public OpenVrFailure Reason { get; } = reason;
+
+    /// <summary>翻訳できない詳細。</summary>
+    public string Detail { get; } = detail;
+}

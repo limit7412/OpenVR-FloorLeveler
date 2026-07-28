@@ -92,11 +92,13 @@
           <Grid ColumnDefinitions="*,12,*">
             <StackPanel Grid.Column="0" Spacing="4">
               <TextBlock Text="{Binding L.TopViewLabel}" FontSize="12" Foreground="#A0808080" />
-              <ctl:FloorPlotControl Plot="{Binding TopPlot}" EqualAspect="True" Height="200" />
+              <ctl:FloorPlotControl Plot="{Binding TopPlot}" EqualAspect="True" Height="200"
+                                    EmptyText="{Binding L.PlotNoSamples}" />
             </StackPanel>
             <StackPanel Grid.Column="2" Spacing="4">
               <TextBlock Text="{Binding L.SideViewLabel}" FontSize="12" Foreground="#A0808080" />
-              <ctl:FloorPlotControl Plot="{Binding SidePlot}" EqualAspect="False" Height="200" />
+              <ctl:FloorPlotControl Plot="{Binding SidePlot}" EqualAspect="False" Height="200"
+                                    EmptyText="{Binding L.PlotNoSamples}" />
             </StackPanel>
           </Grid>
           <TextBlock FontSize="11" Foreground="#A0808080" TextWrapping="Wrap"

@@ -198,6 +198,94 @@ public class MainViewModelLanguageTests : IDisposable
     }
 
     [Fact]
+    public void RestoreFailureMessage_IsFullyRewrittenOnLanguageChange()
+    {
+        // 表示名 (種別名を含む) も作り直すこと。生成済みの文字列を掴んでいると、
+        // 外側の文だけ英語になり「適用前」などが旧言語で残る。
+        var gateway = new FakeSessionGateway(RigidTransform.Identity) { CommitResult = false };
+        var vm = Create(gateway: gateway);
+        vm.ConnectCommand.Execute(null); // 接続で自動退避が 1 件
+        vm.SelectedBackup = vm.Backups[0];
+
+        vm.RestoreSelectedCommand.Execute(null);
+        Assert.Contains(Localized.Ja.BackupKindAuto, vm.StatusMessage);
+
+        vm.Language = AppLanguage.English;
+
+        Assert.Contains(Localized.En.BackupKindAuto, vm.StatusMessage);
+        Assert.DoesNotContain(Localized.Ja.BackupKindAuto, vm.StatusMessage);
+    }
+
+    [Fact]
+    public void PlotAxisLabels_FollowTheSelectedLanguage()
+    {
+        // 軸ラベルは投影時に確定する文字列なので、切替時に作り直さないと旧言語で残る。
+        var vm = Create();
+        Assert.Equal(Localized.Ja.PlotAxisTiltDirection, vm.SidePlot.HorizontalLabel);
+        Assert.Equal(Localized.Ja.PlotAxisHeight, vm.SidePlot.VerticalLabel);
+        Assert.Equal(Localized.Ja.PlotAxisX, vm.TopPlot.HorizontalLabel);
+
+        vm.Language = AppLanguage.English;
+
+        Assert.Equal(Localized.En.PlotAxisTiltDirection, vm.SidePlot.HorizontalLabel);
+        Assert.Equal(Localized.En.PlotAxisHeight, vm.SidePlot.VerticalLabel);
+        Assert.Equal(Localized.En.PlotAxisX, vm.TopPlot.HorizontalLabel);
+    }
+
+    [Theory]
+    [InlineData(SessionFailure.InitializationFailed)]
+    [InlineData(SessionFailure.InterfaceVersionUnsupported)]
+    [InlineData(SessionFailure.InterfaceUnavailable)]
+    public void ConnectFailure_FromOpenVr_IsDescribedInTheSelectedLanguage(SessionFailure reason)
+    {
+        // interop 層は種別と翻訳できない詳細だけを運び、文章は UI が組み立てる。
+        // 以前は日本語の文が例外メッセージに埋まっており、英語 UI で混在していた。
+        var vm = new MainViewModel(
+            () => throw new SessionUnavailableException(reason, "DETAIL"),
+            new AppSettings { Language = AppLanguage.English },
+            new BackupService(_dir));
+
+        vm.ConnectCommand.Execute(null);
+
+        Assert.Contains("DETAIL", vm.StatusMessage, StringComparison.Ordinal);
+        Assert.DoesNotContain(reason.ToString(), vm.StatusMessage, StringComparison.Ordinal);
+
+        var english = vm.StatusMessage;
+        vm.Language = AppLanguage.Japanese;
+        Assert.NotEqual(english, vm.StatusMessage);
+        Assert.Contains("DETAIL", vm.StatusMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ApplyFailure_FromChaperoneRead_IsDescribedInTheSelectedLanguage()
+    {
+        // Chaperone の読み取り失敗も同様に、選択中の言語で組み立てる。
+        // 傾いた S→R にして、モード A で適用できる補正がある状態にする。
+        var gateway = new FakeSessionGateway(new RigidTransform(
+            Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 2f * MathF.PI / 180f), Vector3.Zero));
+        var vm = Create(gateway: gateway);
+        vm.ConnectCommand.Execute(null);
+        vm.UseMeasuredFloorMode = false;
+        Assert.True(vm.CanApply);
+
+        gateway.ApplyException = new OpenVr.OpenVrException(
+            OpenVr.OpenVrFailure.ChaperoneReadFailed, "GetWorkingCollisionBoundsInfo");
+        vm.ApplyCommand.Execute(null);
+
+        Assert.Equal(
+            Localized.Ja.StatusApplyFailed(
+                Localized.Ja.ErrorChaperoneReadFailed("GetWorkingCollisionBoundsInfo")),
+            vm.StatusMessage);
+
+        vm.Language = AppLanguage.English;
+
+        Assert.Equal(
+            Localized.En.StatusApplyFailed(
+                Localized.En.ErrorChaperoneReadFailed("GetWorkingCollisionBoundsInfo")),
+            vm.StatusMessage);
+    }
+
+    [Fact]
     public void TiltAndResidual_AreFormattedInTheSelectedLanguage()
     {
         var gateway = new FakeSessionGateway(RigidTransform.Identity);

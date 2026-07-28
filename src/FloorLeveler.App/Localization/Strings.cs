@@ -215,6 +215,32 @@ public sealed class Strings
     public string CorrectionSummaryValue(float rotationDegrees, float heightChangeMillimeters)
         => Format(nameof(CorrectionSummaryValue), rotationDegrees, heightChangeMillimeters);
 
+    // --- 可視化の描画テキスト ---
+
+    public string PlotNoSamples => Get(nameof(PlotNoSamples));
+
+    public string PlotAxisX => Get(nameof(PlotAxisX));
+
+    public string PlotAxisZ => Get(nameof(PlotAxisZ));
+
+    public string PlotAxisTiltDirection => Get(nameof(PlotAxisTiltDirection));
+
+    public string PlotAxisHeight => Get(nameof(PlotAxisHeight));
+
+    // --- OpenVR 由来のエラー ---
+
+    public string ErrorInitializationFailed(string detail)
+        => Format(nameof(ErrorInitializationFailed), detail);
+
+    public string ErrorInterfaceVersionUnsupported(string interfaceName)
+        => Format(nameof(ErrorInterfaceVersionUnsupported), interfaceName);
+
+    public string ErrorInterfaceUnavailable(string detail)
+        => Format(nameof(ErrorInterfaceUnavailable), detail);
+
+    public string ErrorChaperoneReadFailed(string apiName)
+        => Format(nameof(ErrorChaperoneReadFailed), apiName);
+
     /// <summary>
     /// キーに対応する文字列を返す。欠落時はキー名をそのまま返す
     /// (画面が空欄になるより、どのキーが無いか分かる方が直せる)。

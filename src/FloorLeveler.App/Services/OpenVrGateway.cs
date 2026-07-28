@@ -20,14 +20,23 @@ public sealed class OpenVrGateway : ISessionGateway
         }
         catch (OpenVrException ex)
         {
-            throw new SessionUnavailableException(SessionFailure.Runtime, ex.Message, ex);
+            // 文言は言語に依存するため、種別と翻訳できない詳細だけを伝える。
+            throw new SessionUnavailableException(ToSessionFailure(ex.Reason), ex.Detail, ex);
         }
         catch (DllNotFoundException ex)
         {
-            // 文言は言語に依存するため、ここでは理由だけを伝える。
-            throw new SessionUnavailableException(SessionFailure.NativeLibraryMissing, ex.Message, ex);
+            throw new SessionUnavailableException(
+                SessionFailure.NativeLibraryMissing, ex.Message, ex);
         }
     }
+
+    private static SessionFailure ToSessionFailure(OpenVrFailure failure) => failure switch
+    {
+        OpenVrFailure.InitializationFailed => SessionFailure.InitializationFailed,
+        OpenVrFailure.InterfaceVersionUnsupported => SessionFailure.InterfaceVersionUnsupported,
+        OpenVrFailure.InterfaceUnavailable => SessionFailure.InterfaceUnavailable,
+        _ => SessionFailure.Runtime,
+    };
 
     public IReadOnlyList<GatewayDevice> ListDevices()
         => _session.System.ListConnectedDevices()

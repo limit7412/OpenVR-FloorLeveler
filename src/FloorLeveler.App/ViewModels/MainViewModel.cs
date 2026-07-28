@@ -32,8 +32,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private CorrectionMode _mode = CorrectionMode.GravityAlign;
     private bool _useRansac;
     private FloorEstimate? _estimate;
-    private FloorPlot _topPlot = FloorProjection.TopDown([]);
-    private FloorPlot _sidePlot = FloorProjection.Side([], null);
+    private FloorPlot _topPlot = FloorProjection.TopDown([], TopAxisLabels(Strings.For(AppLanguage.Japanese)));
+    private FloorPlot _sidePlot = FloorProjection.Side([], null, SideAxisLabels(Strings.For(AppLanguage.Japanese)));
     private bool _isPreviewing;
     private bool _largeCorrectionAcknowledged;
     private SamplingMode _samplingMode = SamplingMode.Manual;
@@ -365,7 +365,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             // dll が無いケースだけは OpenVR のメッセージより具体的な案内を出す。
             SetStatus(ex is SessionUnavailableException { Reason: SessionFailure.NativeLibraryMissing }
                 ? s => s.StatusNativeLibraryMissing
-                : s => s.StatusConnectFailed(ex.Message));
+                : s => s.StatusConnectFailed(ErrorText.Describe(ex, s)));
         }
     }
 
@@ -492,8 +492,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _pendingCorrection = TryComputeCorrection();
 
         // 点群・推定平面を 2D ビューへ投影し直す (仕様 F-4)。
-        TopPlot = FloorProjection.TopDown(_points);
-        SidePlot = FloorProjection.Side(_points, _estimate?.Plane);
+        TopPlot = FloorProjection.TopDown(_points, TopAxisLabels(L));
+        SidePlot = FloorProjection.Side(_points, _estimate?.Plane, SideAxisLabels(L));
 
         // 補正が変わったら確認状態はリセットする (別の大補正を無確認で通さない)。
         _largeCorrectionAcknowledged = false;
@@ -528,7 +528,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         catch (Exception ex)
         {
             // ChaperoneSetup の読み取り失敗などは「補正を算出できません」に落とす。
-            SetStatus(s => s.StatusCorrectionComputeFailed(ex.Message));
+            SetStatus(s => s.StatusCorrectionComputeFailed(ErrorText.Describe(ex, s)));
             return null;
         }
     }
@@ -592,7 +592,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             _gateway.Revert();
             IsPreviewing = false;
-            SetStatus(s => s.StatusPreviewFailed(ex.Message));
+            SetStatus(s => s.StatusPreviewFailed(ErrorText.Describe(ex, s)));
         }
     }
 
@@ -663,7 +663,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             // 途中失敗時は中途半端な状態を commit しない (仕様 NF-5)。
             _gateway.Revert();
             IsPreviewing = false;
-            SetStatus(s => s.StatusApplyFailed(ex.Message));
+            SetStatus(s => s.StatusApplyFailed(ErrorText.Describe(ex, s)));
         }
     }
 
@@ -714,7 +714,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         catch (Exception ex)
         {
             _gateway.Revert();
-            SetStatus(s => s.StatusUndoFailedWithReason(ex.Message));
+            SetStatus(s => s.StatusUndoFailedWithReason(ErrorText.Describe(ex, s)));
         }
     }
 
@@ -736,7 +736,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            SetStatus(s => s.StatusBackupFailed(ex.Message));
+            SetStatus(s => s.StatusBackupFailed(ErrorText.Describe(ex, s)));
         }
     }
 
@@ -787,8 +787,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         // (ユーザーが選んだ時点と異なる状態を黙って復元しないため)。
         if (!TryRestore(item.Entry))
         {
-            var name = item.DisplayName;
-            SetStatus(s => s.StatusRestoreFailed(name));
+            // 表示名ごと作り直す。生成済みの文字列を掴むと、失敗後に言語を切り替えたとき
+            // 種別名だけ旧言語のまま残る。
+            var entry = item.Entry;
+            SetStatus(s => s.StatusRestoreFailed(BackupListItem.Create(entry, s).DisplayName));
             return;
         }
 
@@ -915,6 +917,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
+    /// <summary>俯瞰ビューの軸ラベル。</summary>
+    private static PlotAxisLabels TopAxisLabels(Strings strings)
+        => new(strings.PlotAxisX, strings.PlotAxisZ);
+
+    /// <summary>側面ビューの軸ラベル。</summary>
+    private static PlotAxisLabels SideAxisLabels(Strings strings)
+        => new(strings.PlotAxisTiltDirection, strings.PlotAxisHeight);
+
     private static string FormatMatrix(RigidTransform t)
     {
         var m = t.ToRowMajor3x4();
@@ -954,7 +964,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(PointCountText));
         OnPropertyChanged(nameof(SpreadLabelText));
 
-        // 一覧のラベルは生成済みの文字列なので、作り直さないと旧言語のまま残る。
+        // 一覧のラベルとプロットの軸ラベルは生成済みの文字列なので、
+        // 作り直さないと旧言語のまま残る。
+        TopPlot = FloorProjection.TopDown(_points, TopAxisLabels(L));
+        SidePlot = FloorProjection.Side(_points, _estimate?.Plane, SideAxisLabels(L));
         RefreshBackups();
     }
 

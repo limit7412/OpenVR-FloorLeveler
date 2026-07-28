@@ -22,9 +22,13 @@ public sealed class FloorPlotControl : Control
     public static readonly StyledProperty<bool> EqualAspectProperty =
         AvaloniaProperty.Register<FloorPlotControl, bool>(nameof(EqualAspect));
 
+    /// <summary>描くデータが無いときに表示する文言 (言語に依存するため外から渡す)。</summary>
+    public static readonly StyledProperty<string?> EmptyTextProperty =
+        AvaloniaProperty.Register<FloorPlotControl, string?>(nameof(EmptyText));
+
     static FloorPlotControl()
     {
-        AffectsRender<FloorPlotControl>(PlotProperty, EqualAspectProperty);
+        AffectsRender<FloorPlotControl>(PlotProperty, EqualAspectProperty, EmptyTextProperty);
     }
 
     public FloorPlot? Plot
@@ -37,6 +41,12 @@ public sealed class FloorPlotControl : Control
     {
         get => GetValue(EqualAspectProperty);
         set => SetValue(EqualAspectProperty, value);
+    }
+
+    public string? EmptyText
+    {
+        get => GetValue(EmptyTextProperty);
+        set => SetValue(EmptyTextProperty, value);
     }
 
     public override void Render(DrawingContext context)
@@ -61,7 +71,7 @@ public sealed class FloorPlotControl : Control
         var plot = Plot;
         if (plot is null || plot.IsEmpty)
         {
-            DrawText(context, "サンプルなし", new Point(plotRect.X + 8, plotRect.Y + 8), muted);
+            DrawText(context, EmptyText ?? string.Empty, new Point(plotRect.X + 8, plotRect.Y + 8), muted);
             return;
         }
 

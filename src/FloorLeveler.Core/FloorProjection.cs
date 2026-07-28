@@ -3,6 +3,14 @@ using System.Numerics;
 namespace FloorLeveler.Core;
 
 /// <summary>
+/// プロットの軸ラベル。文言は言語に依存するため Shell 側から渡す
+/// (Core に訳文を持たせない)。
+/// </summary>
+/// <param name="Horizontal">横軸ラベル。</param>
+/// <param name="Vertical">縦軸ラベル。</param>
+public sealed record PlotAxisLabels(string Horizontal, string Vertical);
+
+/// <summary>
 /// 2D プロット用に投影した点群と推定床面の断面線 (仕様 F-4)。座標はメートル。
 /// 描画 (ピクセルへの写像) は Shell 側に委ね、本型は純粋な幾何のみを持つ。
 /// </summary>
@@ -39,7 +47,7 @@ public static class FloorProjection
     /// <summary>
     /// 俯瞰ビュー: XZ 平面へ投影する (横=X, 縦=Z)。真上から見た点群の広がりを表す。
     /// </summary>
-    public static FloorPlot TopDown(IReadOnlyList<Vector3> points)
+    public static FloorPlot TopDown(IReadOnlyList<Vector3> points, PlotAxisLabels labels)
     {
         ArgumentNullException.ThrowIfNull(points);
 
@@ -50,7 +58,7 @@ public static class FloorProjection
         }
 
         var (min, max) = Bounds(projected, null);
-        return new FloorPlot(projected, null, min, max, "X (m)", "Z (m)");
+        return new FloorPlot(projected, null, min, max, labels.Horizontal, labels.Vertical);
     }
 
     /// <summary>
@@ -59,7 +67,7 @@ public static class FloorProjection
     /// </summary>
     /// <param name="points">standing 空間の点群。</param>
     /// <param name="plane">推定平面。null (点数不足など) の場合は床線を返さない。</param>
-    public static FloorPlot Side(IReadOnlyList<Vector3> points, PlaneFitResult? plane)
+    public static FloorPlot Side(IReadOnlyList<Vector3> points, PlaneFitResult? plane, PlotAxisLabels labels)
     {
         ArgumentNullException.ThrowIfNull(points);
 
@@ -94,7 +102,7 @@ public static class FloorProjection
         }
 
         var (min, max) = Bounds(projected, line);
-        return new FloorPlot(projected, line, min, max, "傾き方向 u (m)", "高さ Y (m)");
+        return new FloorPlot(projected, line, min, max, labels.Horizontal, labels.Vertical);
     }
 
     /// <summary>下り方位方向の水平単位ベクトル。傾きが無い/平面が無い場合は +Z。</summary>
