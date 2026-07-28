@@ -1,7 +1,8 @@
 name: Release
 
 # タグ駆動リリース (仕様 §8.4)。`v1.2.3` のようなタグを push すると、
-# 単一 exe を発行 → スモークテスト → GitHub Release へ添付する。
+# build.yml で単一 exe を発行し、GitHub Release へ添付する。
+# 発行・検証の手順は build.yml と共有する (手動ビルドと食い違わせないため)。
 on:
   push:
     tags: ['v*']
@@ -10,18 +11,14 @@ permissions:
   contents: write # Release の作成と成果物添付に必要
 
 jobs:
-  release:
-    # win-x64 の exe をその場で起動してスモークテストするため Windows で実行する。
-    runs-on: windows-latest
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.derive.outputs.version }}
+      prerelease: ${{ steps.derive.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 10.0.x
-
       - name: Derive version from tag
-        id: version
-        shell: bash
+        id: derive
         run: |
           # v1.2.3 → 1.2.3 / v1.2.3-rc.1 → 1.2.3-rc.1
           version="${GITHUB_REF_NAME#v}"
@@ -41,64 +38,22 @@ jobs:
             *)   echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
           esac
 
-      - name: Test
-        run: dotnet test --configuration Release
+  build:
+    needs: version
+    uses: ./.github/workflows/build.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
 
-      - name: Publish single-file exe (win-x64)
-        run: >
-          dotnet publish src/FloorLeveler.App -c Release -r win-x64 --self-contained
-          -p:PublishSingleFile=true
-          -p:IncludeNativeLibrariesForSelfExtract=true
-          -p:EnableCompressionInSingleFile=true
-          -p:Version=${{ steps.version.outputs.version }}
-          -o publish
-
-      - name: Check size budget (NF-2, 60MB 以下)
-        shell: bash
-        run: |
-          size=$(stat -c%s publish/FloorLeveler.exe)
-          echo "FloorLeveler.exe: $((size / 1024 / 1024)) MB"
-          test "$size" -le $((60 * 1024 * 1024))
-
-      - name: Smoke test (exe 起動と --version)
-        shell: pwsh
-        env:
-          EXPECTED: ${{ steps.version.outputs.version }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-
-          # (1) exe が起動し --version が正常終了すること。
-          #     WinExe はコンソール非接続だと標準出力が捨てられるため、ファイルへ明示的に
-          #     リダイレクトして確実に取得する (有効なハンドルを継承させる)。
-          $proc = Start-Process -FilePath ./publish/FloorLeveler.exe -ArgumentList '--version' `
-            -NoNewWindow -Wait -PassThru `
-            -RedirectStandardOutput version.out -RedirectStandardError version.err
-          $stderr = (Get-Content version.err -Raw -ErrorAction SilentlyContinue)
-          if ($proc.ExitCode -ne 0) {
-            throw "--version が異常終了しました (exit=$($proc.ExitCode)): $stderr"
-          }
-
-          # (2) --version が実際にバージョンを出力すること (README が保証する挙動)。
-          #     出力が空なら失敗させる。
-          $stdout = (Get-Content version.out -Raw -ErrorAction SilentlyContinue)
-          $stdout = if ($null -eq $stdout) { '' } else { $stdout.Trim() }
-          if (-not $stdout) {
-            throw "--version が何も出力しませんでした (stderr: $stderr)"
-          }
-          if ($stdout -ne $env:EXPECTED) {
-            throw "--version の出力が不一致: expected $env:EXPECTED, got $stdout"
-          }
-
-          # (3) exe のファイルプロパティにもタグのバージョンが埋まっていること (仕様 §8.4)。
-          #     ProductVersion は InformationalVersion 由来。
-          $product = (Get-Item ./publish/FloorLeveler.exe).VersionInfo.ProductVersion.Trim()
-          Write-Host "--version => '$stdout' / ProductVersion = $product"
-          if ($product -ne $env:EXPECTED) {
-            throw "ファイルプロパティのバージョン不一致: expected $env:EXPECTED, got $product"
-          }
+  release:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.artifact }}
+          path: publish
 
       - name: Write release notes
-        shell: bash
         run: |
           cat > release-notes.md <<'EOF'
           ## インストール
@@ -114,12 +69,14 @@ jobs:
           EOF
 
       - name: Create release
-        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # このジョブは checkout しない (必要なのは成果物だけ) ため、gh が
+          # 対象リポジトリを推測できる Git リモートが無い。明示的に指定する。
+          GH_REPO: ${{ github.repository }}
         run: |
           flags=(--title "$GITHUB_REF_NAME" --notes-file release-notes.md --verify-tag)
-          if [ "${{ steps.version.outputs.prerelease }}" = "true" ]; then
+          if [ "${{ needs.version.outputs.prerelease }}" = "true" ]; then
             flags+=(--prerelease)
           fi
           gh release create "$GITHUB_REF_NAME" publish/FloorLeveler.exe "${flags[@]}"

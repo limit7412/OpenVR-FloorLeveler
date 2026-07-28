@@ -104,6 +104,20 @@ SteamVR が入っていれば dll を用意する必要はなく、exe 単体で
 発行時に `-p:Version=1.2.3` を渡すと、その値が exe のファイルプロパティ
 (ProductVersion) と `--version` の出力になる。
 
+## リリース用ビルドの手動実行
+
+GitHub Actions の **Build** ワークフローを `workflow_dispatch` で実行すると、
+公開リリースを作らずにリリース用の exe を得られる (実機確認用)。
+
+1. Actions → Build → Run workflow
+2. `version` にバージョンを入れる (省略時は `0.0.0`)
+3. 完了後、実行結果の Artifacts から `FloorLeveler-win-x64-{version}` をダウンロード
+
+ワークフローの中身はリリース (下記) と同じで、テスト → 単一 exe の発行 →
+サイズ予算の確認 → スモークテストまで行う。発行手順は
+`.github/workflows/build.yml` の 1 箇所にあり、`release.yml` はこれを
+`workflow_call` で呼ぶ (手動ビルドとリリースで手順が食い違わないようにするため)。
+
 ## リリース (仕様 §8.4)
 
 `v` から始まるタグを push すると `.github/workflows/release.yml` が動き、
@@ -114,11 +128,11 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-ワークフローは Windows ランナー上で テスト → 単一 exe の発行
-(`-p:Version=` にタグの値を渡す) → サイズ予算の確認 → スモークテスト
-(exe を起動し、`--version` が正常終了して**タグと同じバージョンを出力**すること、
-ファイルプロパティのバージョンも一致することを確認) を行い、`FloorLeveler.exe` を
-添付した GitHub Release を作成する。
+ワークフローはタグからバージョンを取り出し、`build.yml` を呼んで
+Windows ランナー上で テスト → 単一 exe の発行 (`-p:Version=` にタグの値を渡す) →
+サイズ予算の確認 → スモークテスト (exe を起動し、`--version` が正常終了して
+**タグと同じバージョンを出力**すること、ファイルプロパティのバージョンも一致する
+ことを確認) を行い、その成果物を添付した GitHub Release を作成する。
 
 対応するタグ形式は `vMAJOR.MINOR.PATCH[-プレリリース識別子]` (例: `v1.2.3`、
 `v1.2.3-rc.1`)。プレリリース識別子を含むタグは prerelease として公開される。
