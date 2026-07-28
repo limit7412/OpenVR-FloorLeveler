@@ -133,7 +133,8 @@ Chaperone のスナップショット (S→R 行列 / seated / 境界頂点) を
 
 [MIT License](LICENSE)
 
-`openvr_api.dll` は同梱・再配布しておらず、実行時に SteamVR 付属のものを読み込む。
+`openvr_api.dll` は同梱・再配布しておらず、実行時に既存のものを読み込む
+(exe の隣 / OS の検索パス、見つからなければ SteamVR 付属のもの)。
 
 ---
 
