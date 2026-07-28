@@ -33,7 +33,8 @@ public sealed class OpenVrSession : IDisposable
         NativeMethods.VR_InitInternal2(ref error, EVRApplicationType.Utility, null);
         if (error != 0)
         {
-            throw new OpenVrException($"OpenVR の初期化に失敗しました: {NativeMethods.InitErrorDescription(error)}");
+            throw new OpenVrException(
+                OpenVrFailure.InitializationFailed, NativeMethods.InitErrorDescription(error));
         }
 
         try
@@ -70,9 +71,7 @@ public sealed class OpenVrSession : IDisposable
     {
         if (!NativeMethods.VR_IsInterfaceVersionValid(version))
         {
-            throw new OpenVrException(
-                $"SteamVR ランタイムがインターフェイス {version} を提供していません。" +
-                "SteamVR のバージョンと本ツールの対応状況を確認してください。");
+            throw new OpenVrException(OpenVrFailure.InterfaceVersionUnsupported, version);
         }
     }
 
@@ -83,7 +82,8 @@ public sealed class OpenVrSession : IDisposable
         if (ptr == IntPtr.Zero || error != 0)
         {
             throw new OpenVrException(
-                $"FnTable:{version} の取得に失敗しました: {NativeMethods.InitErrorDescription(error)}");
+                OpenVrFailure.InterfaceUnavailable,
+                $"FnTable:{version} ({NativeMethods.InitErrorDescription(error)})");
         }
 
         return ptr;

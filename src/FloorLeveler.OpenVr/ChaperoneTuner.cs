@@ -50,7 +50,8 @@ public sealed class ChaperoneTuner
         var m = default(HmdMatrix34);
         if (!_getWorkingStanding(ref m))
         {
-            throw new OpenVrException("GetWorkingStandingZeroPoseToRawTrackingPose が失敗しました。");
+            throw new OpenVrException(
+                OpenVrFailure.ChaperoneReadFailed, "GetWorkingStandingZeroPoseToRawTrackingPose");
         }
 
         return m.ToRigidTransform();
@@ -62,7 +63,8 @@ public sealed class ChaperoneTuner
         var m = default(HmdMatrix34);
         if (!_getWorkingSeated(ref m))
         {
-            throw new OpenVrException("GetWorkingSeatedZeroPoseToRawTrackingPose が失敗しました。");
+            throw new OpenVrException(
+                OpenVrFailure.ChaperoneReadFailed, "GetWorkingSeatedZeroPoseToRawTrackingPose");
         }
 
         return m.ToRigidTransform();
@@ -100,8 +102,8 @@ public sealed class ChaperoneTuner
         if (!_getWorkingBounds(quads, ref count))
         {
             throw new OpenVrException(
-                $"GetWorkingCollisionBoundsInfo が失敗しました (期待 quad 数: {count})。" +
-                "境界を変換できないため補正を中止します。");
+                OpenVrFailure.ChaperoneReadFailed,
+                $"GetWorkingCollisionBoundsInfo (quads: {count})");
         }
 
         return quads;

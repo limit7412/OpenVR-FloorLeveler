@@ -46,7 +46,7 @@ public class MainViewModelBackupTests : IDisposable
 
         Assert.Equal(BackupKind.Manual, backup.LatestRestorable()!.Kind);
         Assert.True(vm.RestoreLatestCommand.CanExecute(null));
-        Assert.Contains("バックアップを保存", vm.StatusMessage);
+        Assert.StartsWith(Localized.Fixed(s => s.StatusBackupSaved(Localized.Arg)), vm.StatusMessage);
     }
 
     [Fact]
@@ -77,7 +77,7 @@ public class MainViewModelBackupTests : IDisposable
         var p = new Vector3(1f, 0.5f, -0.7f);
         Assert.True(
             (original.TransformPoint(p) - gateway.CommittedStanding.TransformPoint(p)).Length() < 1e-4f);
-        Assert.Contains("復元しました", vm.StatusMessage);
+        Assert.StartsWith(Localized.Fixed(s => s.StatusRestored(Localized.Arg)), vm.StatusMessage);
     }
 
     [Fact]
@@ -131,7 +131,7 @@ public class MainViewModelBackupTests : IDisposable
         vm.ApplyCommand.Execute(null);
 
         Assert.Equal(0, gateway.CommitCount);
-        Assert.Contains("適用を中止", vm.StatusMessage);
+        Assert.Equal(Localized.Ja.StatusBackupBeforeApplyFailed, vm.StatusMessage);
     }
 
     [Fact]
@@ -150,7 +150,7 @@ public class MainViewModelBackupTests : IDisposable
 
         // 破損した最新をスキップして有効な手動退避へ復元できる。
         Assert.True(gateway.CommitCount >= 1);
-        Assert.Contains("スキップ", vm.StatusMessage);
+        Assert.Equal(Localized.Ja.StatusRestoredWithSkips("20260723-030000", 1), vm.StatusMessage);
     }
 
     [Fact]
@@ -171,7 +171,7 @@ public class MainViewModelBackupTests : IDisposable
         vm.RestoreLatestCommand.Execute(null);
 
         Assert.True(gateway.CommitCount >= 1);
-        Assert.Contains("スキップ", vm.StatusMessage);
+        Assert.Equal(Localized.Ja.StatusRestoredWithSkips("20260723-030000", 1), vm.StatusMessage);
     }
 
     [Fact]
@@ -192,7 +192,7 @@ public class MainViewModelBackupTests : IDisposable
         vm.RestoreLatestCommand.Execute(null);
 
         Assert.True(gateway.CommitCount >= 1);
-        Assert.Contains("スキップ", vm.StatusMessage);
+        Assert.Equal(Localized.Ja.StatusRestoredWithSkips("20260723-030000", 1), vm.StatusMessage);
     }
 
     [Fact]
@@ -209,8 +209,7 @@ public class MainViewModelBackupTests : IDisposable
 
         // 2 回 commit を試み (1 回目失敗・2 回目成功)、復元に成功する。
         Assert.Equal(2, gateway.CommitCount);
-        Assert.Contains("復元しました", vm.StatusMessage);
-        Assert.Contains("スキップ", vm.StatusMessage);
+        Assert.Equal(Localized.Ja.StatusRestoredWithSkips("20260723-030000", 1), vm.StatusMessage);
     }
 
     [Fact]
@@ -225,7 +224,7 @@ public class MainViewModelBackupTests : IDisposable
         vm.RestoreLatestCommand.Execute(null);
 
         Assert.Equal(0, gateway.CommitCount);
-        Assert.Contains("すべて復元に失敗", vm.StatusMessage);
+        Assert.Equal(Localized.Ja.StatusAllRestoresFailed, vm.StatusMessage);
     }
 
     [Fact]
@@ -239,7 +238,7 @@ public class MainViewModelBackupTests : IDisposable
         vm.RestoreLatestCommand.Execute(null);
 
         Assert.True(gateway.RevertCount >= 1);
-        Assert.Contains("失敗", vm.StatusMessage);
+        Assert.Equal(Localized.Ja.StatusAllRestoresFailed, vm.StatusMessage);
     }
 
     [Fact]
@@ -263,9 +262,9 @@ public class MainViewModelBackupTests : IDisposable
         vm.BackupCommand.Execute(null);     // 手動で 1 件
 
         Assert.Equal(2, vm.Backups.Count);
-        Assert.Equal(BackupKind.Manual, vm.Backups[0].Kind); // 新しい順
-        Assert.Equal(BackupKind.Auto, vm.Backups[1].Kind);
-        Assert.Equal("手動", vm.Backups[0].KindLabel);
+        Assert.Equal(BackupKind.Manual, vm.Backups[0].Entry.Kind); // 新しい順
+        Assert.Equal(BackupKind.Auto, vm.Backups[1].Entry.Kind);
+        Assert.Contains(Localized.Ja.BackupKindManual, vm.Backups[0].DisplayName);
         Assert.Contains("2026-07-23 03:00:00", vm.Backups[0].DisplayName);
     }
 
@@ -296,13 +295,13 @@ public class MainViewModelBackupTests : IDisposable
 
         vm.ApplyCommand.Execute(null);           // 適用で状態が変わる (PreApply も増える)
         Assert.NotEqual(expected, gateway.CommittedStanding);
-        Assert.NotEqual(chosen.Path, vm.Backups[0].Path); // 最新はもう別の退避
+        Assert.NotEqual(chosen.Entry.Path, vm.Backups[0].Entry.Path); // 最新はもう別の退避
 
-        vm.SelectedBackup = vm.Backups.First(e => e.Path == chosen.Path);
+        vm.SelectedBackup = vm.Backups.First(e => e.Entry.Path == chosen.Entry.Path);
         vm.RestoreSelectedCommand.Execute(null);
 
         Assert.Equal(expected, gateway.CommittedStanding);
-        Assert.Contains("復元しました", vm.StatusMessage);
+        Assert.StartsWith(Localized.Fixed(s => s.StatusRestored(Localized.Arg)), vm.StatusMessage);
     }
 
     [Fact]
@@ -311,13 +310,13 @@ public class MainViewModelBackupTests : IDisposable
         // 自動退避は「最新の復元」からは除外されるが、明示的に選べば復元できる。
         var gateway = new FakeSessionGateway(TiltedStanding(2f));
         var vm = Connected(gateway, out _);
-        var auto = vm.Backups.Single(e => e.Kind == BackupKind.Auto);
+        var auto = vm.Backups.Single(e => e.Entry.Kind == BackupKind.Auto);
         var expected = gateway.CommittedStanding;
 
         vm.ApplyCommand.Execute(null);
         Assert.NotEqual(expected, gateway.CommittedStanding);
 
-        vm.SelectedBackup = vm.Backups.First(e => e.Path == auto.Path);
+        vm.SelectedBackup = vm.Backups.First(e => e.Entry.Path == auto.Entry.Path);
         vm.RestoreSelectedCommand.Execute(null);
 
         Assert.Equal(expected, gateway.CommittedStanding);
@@ -337,11 +336,11 @@ public class MainViewModelBackupTests : IDisposable
         vm.RefreshBackupsCommand.Execute(null);
 
         var before = gateway.CommitCount;
-        vm.SelectedBackup = vm.Backups.First(e => e.Path == corrupt);
+        vm.SelectedBackup = vm.Backups.First(e => e.Entry.Path == corrupt);
         vm.RestoreSelectedCommand.Execute(null);
 
         Assert.Equal(before, gateway.CommitCount); // commit していない
-        Assert.Contains("復元できませんでした", vm.StatusMessage);
+        Assert.StartsWith(Localized.Fixed(s => s.StatusRestoreFailed(Localized.Arg)), vm.StatusMessage);
     }
 
     [Fact]
@@ -354,10 +353,10 @@ public class MainViewModelBackupTests : IDisposable
         vm.BackupCommand.Execute(null);
         vm.BackupCommand.Execute(null);
 
-        var manual = vm.Backups.Where(e => e.Kind == BackupKind.Manual).ToArray();
+        var manual = vm.Backups.Where(e => e.Entry.Kind == BackupKind.Manual).ToArray();
         Assert.Equal(2, manual.Length);
-        Assert.Equal(manual[0].Timestamp, manual[1].Timestamp); // 秒までは同一
-        Assert.NotEqual(manual[0].Sequence, manual[1].Sequence);
+        Assert.Equal(manual[0].Entry.Timestamp, manual[1].Entry.Timestamp); // 秒までは同一
+        Assert.NotEqual(manual[0].Entry.Sequence, manual[1].Entry.Sequence);
         Assert.NotEqual(manual[0].DisplayName, manual[1].DisplayName);
     }
 
@@ -376,7 +375,7 @@ public class MainViewModelBackupTests : IDisposable
         vm.RestoreSelectedCommand.Execute(null);
 
         Assert.True(gateway.RevertCount > revertsBefore, "revert されていない");
-        Assert.Contains("復元できませんでした", vm.StatusMessage);
+        Assert.StartsWith(Localized.Fixed(s => s.StatusRestoreFailed(Localized.Arg)), vm.StatusMessage);
     }
 
     [Fact]
@@ -386,11 +385,11 @@ public class MainViewModelBackupTests : IDisposable
         var vm = Connected(gateway, out _);
         vm.BackupCommand.Execute(null);
         vm.SelectedBackup = vm.Backups[0];
-        var selectedPath = vm.SelectedBackup!.Path;
+        var selectedPath = vm.SelectedBackup!.Entry.Path;
 
         vm.RefreshBackupsCommand.Execute(null);
 
-        Assert.Equal(selectedPath, vm.SelectedBackup?.Path);
+        Assert.Equal(selectedPath, vm.SelectedBackup?.Entry.Path);
     }
 
     public void Dispose()

@@ -78,8 +78,16 @@ internal sealed class FakeSessionGateway : ISessionGateway
             ? throw new InvalidOperationException("chaperone unavailable")
             : WorkingStanding;
 
+    /// <summary>設定すると ApplyCorrection がこの例外を投げる (適用失敗の再現用)。</summary>
+    public Exception? ApplyException { get; set; }
+
     public AppliedCorrectionInfo ApplyCorrection(CorrectionResult correction)
     {
+        if (ApplyException is { } ex)
+        {
+            throw ex;
+        }
+
         ApplyCount++;
         LastCorrection = correction;
         var old = WorkingStanding;

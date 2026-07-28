@@ -28,20 +28,11 @@ public enum BackupKind
 /// </param>
 public sealed record BackupEntry(string Path, string Timestamp, BackupKind Kind, long Sequence)
 {
-    /// <summary>種別の日本語表示。</summary>
-    public string KindLabel => Kind switch
-    {
-        BackupKind.Auto => "自動 (接続時)",
-        BackupKind.PreApply => "適用前",
-        _ => "手動",
-    };
-
     /// <summary>
-    /// 一覧表示用のラベル (例: "2026-07-27 03:53:19  適用前  #12")。
-    /// 秒単位の日時と種別だけでは同一秒の同種バックアップ (短時間の連続適用で
-    /// 生じる複数の「適用前」など) を区別できないため、保存順の連番も添える。
+    /// 一覧表示用に整形した日時 (例: "2026-07-27 03:53:19")。表示名の組み立ては
+    /// 言語に依存するため ViewModel 側で行う (ここには訳文を持たせない)。
     /// </summary>
-    public string DisplayName => $"{FormatTimestamp(Timestamp)}  {KindLabel}  #{Sequence}";
+    public string FormattedTimestamp => FormatTimestamp(Timestamp);
 
     /// <summary>ファイル名由来の詰めた表記を読みやすい日時に整形する (解析できなければ原文)。</summary>
     private static string FormatTimestamp(string raw)

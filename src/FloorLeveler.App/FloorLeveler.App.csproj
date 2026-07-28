@@ -17,6 +17,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="FloorLeveler.App.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\FloorLeveler.Core\FloorLeveler.Core.csproj" />
     <ProjectReference Include="..\FloorLeveler.OpenVr\FloorLeveler.OpenVr.csproj" />
   </ItemGroup>

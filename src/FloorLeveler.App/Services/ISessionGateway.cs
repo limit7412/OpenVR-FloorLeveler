@@ -50,6 +50,35 @@ public sealed record AppliedCorrectionInfo(
     RigidTransform NewStandingToRaw,
     int TransformedBoundsQuadCount);
 
+/// <summary>セッション接続に失敗した理由。UI 文言の選択に使う (訳文は持たせない)。</summary>
+public enum SessionFailure
+{
+    /// <summary>分類できない失敗。<see cref="Exception.Message"/> をそのまま見せる。</summary>
+    Runtime,
+
+    /// <summary>openvr_api.dll を解決できなかった (SteamVR 未インストールなど)。</summary>
+    NativeLibraryMissing,
+
+    /// <summary>VR_Init に失敗した。</summary>
+    InitializationFailed,
+
+    /// <summary>ランタイムが必要なインターフェイスバージョンを提供していない。</summary>
+    InterfaceVersionUnsupported,
+
+    /// <summary>インターフェイス (FnTable) を取得できなかった。</summary>
+    InterfaceUnavailable,
+}
+
 /// <summary>セッション接続の失敗を表す例外。</summary>
-public sealed class SessionUnavailableException(string message, Exception? inner = null)
-    : Exception(message, inner);
+/// <param name="reason">失敗の種類。表示する文言は ViewModel が言語に応じて決める。</param>
+/// <param name="detail">翻訳できない詳細 (OpenVR のエラー記述や API 名)。</param>
+public sealed class SessionUnavailableException(
+    SessionFailure reason, string detail, Exception? inner = null)
+    : Exception($"{reason}: {detail}", inner)
+{
+    /// <summary>失敗の種類。</summary>
+    public SessionFailure Reason { get; } = reason;
+
+    /// <summary>翻訳できない詳細。どの言語でもそのまま見せる。</summary>
+    public string Detail { get; } = detail;
+}

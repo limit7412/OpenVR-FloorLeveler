@@ -20,15 +20,23 @@ public sealed class OpenVrGateway : ISessionGateway
         }
         catch (OpenVrException ex)
         {
-            throw new SessionUnavailableException(ex.Message, ex);
+            // 文言は言語に依存するため、種別と翻訳できない詳細だけを伝える。
+            throw new SessionUnavailableException(ToSessionFailure(ex.Reason), ex.Detail, ex);
         }
         catch (DllNotFoundException ex)
         {
             throw new SessionUnavailableException(
-                "openvr_api.dll が見つかりません。SteamVR をインストールするか、" +
-                "FloorLeveler.exe と同じディレクトリに openvr_api.dll を置いてください。", ex);
+                SessionFailure.NativeLibraryMissing, ex.Message, ex);
         }
     }
+
+    private static SessionFailure ToSessionFailure(OpenVrFailure failure) => failure switch
+    {
+        OpenVrFailure.InitializationFailed => SessionFailure.InitializationFailed,
+        OpenVrFailure.InterfaceVersionUnsupported => SessionFailure.InterfaceVersionUnsupported,
+        OpenVrFailure.InterfaceUnavailable => SessionFailure.InterfaceUnavailable,
+        _ => SessionFailure.Runtime,
+    };
 
     public IReadOnlyList<GatewayDevice> ListDevices()
         => _session.System.ListConnectedDevices()

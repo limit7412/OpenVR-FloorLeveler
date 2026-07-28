@@ -62,13 +62,13 @@ public class MainViewModelTests : IDisposable
         vm.ConnectCommand.Execute(null);
 
         Assert.False(vm.IsConnected);
-        Assert.Contains("接続に失敗", vm.StatusMessage);
+        Assert.StartsWith(Localized.Fixed(s => s.StatusConnectFailed(Localized.Arg)), vm.StatusMessage);
     }
 
     [Fact]
     public void Connect_Failure_SetsStatusAndStaysDisconnected()
     {
-        var vm = Create(() => throw new SessionUnavailableException("no steamvr"));
+        var vm = Create(() => throw new SessionUnavailableException(SessionFailure.Runtime, "no steamvr"));
 
         vm.ConnectCommand.Execute(null);
 
@@ -95,7 +95,7 @@ public class MainViewModelTests : IDisposable
         var vm = Connected(gateway);
 
         Assert.False(vm.CanApply);
-        Assert.Contains("補正不要", vm.CorrectionSummary);
+        Assert.Equal(Localized.Ja.StatusCorrectionNegligible, vm.CorrectionSummary);
     }
 
     [Fact]
@@ -120,7 +120,7 @@ public class MainViewModelTests : IDisposable
         vm.RecordPointCommand.Execute(null);
 
         Assert.Equal(0, vm.PointCount);
-        Assert.Contains("取得できませんでした", vm.StatusMessage);
+        Assert.Equal(Localized.Ja.StatusNoValidPose, vm.StatusMessage);
     }
 
     [Fact]
@@ -142,7 +142,7 @@ public class MainViewModelTests : IDisposable
 
         Assert.True(vm.PointCount >= 9);
         Assert.True(vm.CanApply);
-        Assert.Contains("回転", vm.CorrectionSummary);
+        Assert.StartsWith(Localized.Fixed(s => s.CorrectionSummaryValue(0f, 0f)).Split(' ')[0], vm.CorrectionSummary);
     }
 
     [Fact]
@@ -155,7 +155,7 @@ public class MainViewModelTests : IDisposable
         vm.ApplyCommand.Execute(null);
 
         Assert.True(gateway.CommitCount >= 1);
-        Assert.Contains("適用しました", vm.StatusMessage);
+        Assert.Equal(Localized.Ja.StatusApplied, vm.StatusMessage);
         Assert.True(vm.UndoCommand.CanExecute(null));
     }
 
@@ -168,7 +168,7 @@ public class MainViewModelTests : IDisposable
         vm.ApplyCommand.Execute(null);
 
         Assert.True(gateway.RevertCount >= 1);
-        Assert.Contains("失敗", vm.StatusMessage);
+        Assert.Equal(Localized.Ja.StatusApplyFailedReverted, vm.StatusMessage);
         Assert.False(vm.UndoCommand.CanExecute(null));
     }
 

@@ -5,26 +5,30 @@ namespace FloorLeveler.Core.Tests;
 
 public class FloorProjectionTests
 {
+    private static readonly PlotAxisLabels TopLabels = new("X (m)", "Z (m)");
+    private static readonly PlotAxisLabels SideLabels = new("u", "Y");
+
     [Fact]
     public void TopDown_ProjectsToXz_IgnoringHeight()
     {
         var points = new[] { new Vector3(1f, 9f, 2f), new Vector3(3f, -5f, 4f) };
 
-        var plot = FloorProjection.TopDown(points);
+        var plot = FloorProjection.TopDown(points, TopLabels);
 
         Assert.Equal(new Vector2(1f, 2f), plot.Points[0]);
         Assert.Equal(new Vector2(3f, 4f), plot.Points[1]);
         Assert.Null(plot.FloorLine);
         Assert.Equal(new Vector2(1f, 2f), plot.Min);
         Assert.Equal(new Vector2(3f, 4f), plot.Max);
-        Assert.Equal("X (m)", plot.HorizontalLabel);
-        Assert.Equal("Z (m)", plot.VerticalLabel);
+        // ラベルは Shell から渡した値がそのまま入る (Core は訳文を持たない)。
+        Assert.Equal(TopLabels.Horizontal, plot.HorizontalLabel);
+        Assert.Equal(TopLabels.Vertical, plot.VerticalLabel);
     }
 
     [Fact]
     public void TopDown_Empty_IsEmptyWithOriginBounds()
     {
-        var plot = FloorProjection.TopDown([]);
+        var plot = FloorProjection.TopDown([], TopLabels);
 
         Assert.True(plot.IsEmpty);
         Assert.Empty(plot.Points);
@@ -39,15 +43,15 @@ public class FloorProjectionTests
         var points = Grid((x, z) => new Vector3(x, 0.5f, z));
         var plane = PlaneFit.Fit(points);
 
-        var plot = FloorProjection.Side(points, plane);
+        var plot = FloorProjection.Side(points, plane, SideLabels);
 
         Assert.NotNull(plot.FloorLine);
         var (start, end) = plot.FloorLine!.Value;
         // 水平床なので断面線は水平 (両端の高さが等しく重心高さ)。
         Assert.Equal(0.5f, start.Y, 3);
         Assert.Equal(0.5f, end.Y, 3);
-        Assert.Equal("傾き方向 u (m)", plot.HorizontalLabel);
-        Assert.Equal("高さ Y (m)", plot.VerticalLabel);
+        Assert.Equal(SideLabels.Horizontal, plot.HorizontalLabel);
+        Assert.Equal(SideLabels.Vertical, plot.VerticalLabel);
     }
 
     [Fact]
@@ -61,7 +65,7 @@ public class FloorProjectionTests
 
         Assert.Equal(5f, plane.TiltAngleDegrees, 2);
 
-        var plot = FloorProjection.Side(points, plane);
+        var plot = FloorProjection.Side(points, plane, SideLabels);
         Assert.NotNull(plot.FloorLine);
         var (start, end) = plot.FloorLine!.Value;
 
@@ -90,7 +94,7 @@ public class FloorProjectionTests
 
         Assert.True(MathF.Abs(plane.Normal.Y) < 0.1f, $"Ny={plane.Normal.Y}");
 
-        var plot = FloorProjection.Side(points, plane);
+        var plot = FloorProjection.Side(points, plane, SideLabels);
 
         Assert.Null(plot.FloorLine);       // 床線は描かない
         Assert.Equal(points.Length, plot.Points.Count); // 点群自体は投影される
@@ -102,7 +106,7 @@ public class FloorProjectionTests
         // 平面推定前 (2 点) は床線を返さない。
         var points = new[] { new Vector3(0f, 0f, 0f), new Vector3(0f, 0f, 1f) };
 
-        var plot = FloorProjection.Side(points, plane: null);
+        var plot = FloorProjection.Side(points, plane: null, SideLabels);
 
         Assert.Null(plot.FloorLine);
         Assert.Equal(2, plot.Points.Count);

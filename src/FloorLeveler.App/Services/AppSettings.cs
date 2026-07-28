@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using FloorLeveler.App.Localization;
 
 namespace FloorLeveler.App.Services;
 
@@ -17,6 +18,22 @@ public sealed record AppSettings
     public double WindowWidth { get; init; } = 720;
 
     public double WindowHeight { get; init; } = 900;
+
+    private readonly AppLanguage _language = AppLanguage.Japanese;
+
+    /// <summary>
+    /// UI の表示言語 (仕様 §6)。既定は日本語。
+    /// 未定義の値は既定へ戻す。<c>JsonStringEnumConverter</c> は既定で整数値も受け付けるため、
+    /// 設定ファイルが <c>"Language": 999</c> のように壊れていても例外にならず、そのまま
+    /// 未定義の列挙値として入ってくる。その状態では文字列こそ日本語にフォールバックする
+    /// ものの、言語の選択状態がどちらでもなくなり、終了時に不正値が再保存される
+    /// (仕様 F-7 の「破損時は既定値で起動する」を満たさない)。
+    /// </summary>
+    public AppLanguage Language
+    {
+        get => _language;
+        init => _language = Enum.IsDefined(value) ? value : AppLanguage.Japanese;
+    }
 
     public static AppSettings Load()
     {
@@ -53,6 +70,6 @@ public sealed record AppSettings
 }
 
 // trim 安全な JSON シリアライズ (仕様 §8.2)。
-[JsonSourceGenerationOptions(WriteIndented = true)]
+[JsonSourceGenerationOptions(WriteIndented = true, Converters = [typeof(JsonStringEnumConverter<AppLanguage>)])]
 [JsonSerializable(typeof(AppSettings))]
 internal partial class SettingsJsonContext : JsonSerializerContext;

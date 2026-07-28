@@ -1,0 +1,295 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!-- English UI strings. Keys must match the members of Strings. -->
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="WindowTitle" xml:space="preserve">
+    <value>FloorLeveler — Floor Level Correction</value>
+    <comment>ウィンドウタイトル</comment>
+  </data>
+  <data name="LanguageLabel" xml:space="preserve">
+    <value>Language</value>
+    <comment>言語切替のラベル</comment>
+  </data>
+  <data name="LanguageJapanese" xml:space="preserve">
+    <value>日本語</value>
+    <comment>言語名は各言語の自称表記で固定</comment>
+  </data>
+  <data name="LanguageEnglish" xml:space="preserve">
+    <value>English</value>
+    <comment>言語名は各言語の自称表記で固定</comment>
+  </data>
+  <data name="ConnectButton" xml:space="preserve">
+    <value>Connect / Retry</value>
+  </data>
+  <data name="SamplingHeader" xml:space="preserve">
+    <value>Device and sampling</value>
+  </data>
+  <data name="SamplingModeManual" xml:space="preserve">
+    <value>Manual</value>
+  </data>
+  <data name="SamplingModeStillness" xml:space="preserve">
+    <value>Placement</value>
+  </data>
+  <data name="SamplingModeContinuous" xml:space="preserve">
+    <value>Continuous</value>
+  </data>
+  <data name="RecordButton" xml:space="preserve">
+    <value>Record</value>
+  </data>
+  <data name="ClearButton" xml:space="preserve">
+    <value>Clear</value>
+  </data>
+  <data name="PointCountLabel" xml:space="preserve">
+    <value>Points: {0}</value>
+    <comment>{0}=記録した点数</comment>
+  </data>
+  <data name="SpreadLabel" xml:space="preserve">
+    <value>Spread: {0}</value>
+    <comment>{0}=広がりの表示文字列</comment>
+  </data>
+  <data name="SamplingHint" xml:space="preserve">
+    <value>Mode B needs at least 3 points recorded on the floor, spread over 30 cm or more.</value>
+  </data>
+  <data name="EstimateHeader" xml:space="preserve">
+    <value>Estimate</value>
+  </data>
+  <data name="TiltLabel" xml:space="preserve">
+    <value>Tilt:</value>
+  </data>
+  <data name="ResidualLabel" xml:space="preserve">
+    <value>Residual:</value>
+  </data>
+  <data name="UseRansacLabel" xml:space="preserve">
+    <value>Reject outliers with RANSAC</value>
+  </data>
+  <data name="TiltValue" xml:space="preserve">
+    <value>{0:F2}° (azimuth {1:F0}°)</value>
+    <comment>{0}=傾き角, {1}=方位角</comment>
+  </data>
+  <data name="ResidualValue" xml:space="preserve">
+    <value>RMS {0:F1} mm / max {1:F1} mm</value>
+    <comment>{0}=RMS 残差, {1}=最大残差</comment>
+  </data>
+  <data name="PlotHeader" xml:space="preserve">
+    <value>Point cloud / floor plane</value>
+  </data>
+  <data name="TopViewLabel" xml:space="preserve">
+    <value>Top-down view</value>
+  </data>
+  <data name="SideViewLabel" xml:space="preserve">
+    <value>Side view (along the tilt)</value>
+  </data>
+  <data name="PlotHint" xml:space="preserve">
+    <value>Blue dots are recorded contact points, the orange line is the estimated floor. The side view uses different horizontal and vertical scales to make the tilt visible.</value>
+  </data>
+  <data name="CorrectionHeader" xml:space="preserve">
+    <value>Correction</value>
+  </data>
+  <data name="ModeGravityAlign" xml:space="preserve">
+    <value>Mode A: Level to gravity</value>
+  </data>
+  <data name="ModeMeasuredFloor" xml:space="preserve">
+    <value>Mode B: Match measured floor</value>
+  </data>
+  <data name="LargeCorrectionAcknowledge" xml:space="preserve">
+    <value>I understand this is a large correction (over 10°) and want to apply it</value>
+  </data>
+  <data name="PreviewButton" xml:space="preserve">
+    <value>Preview</value>
+  </data>
+  <data name="CancelPreviewButton" xml:space="preserve">
+    <value>Discard preview</value>
+  </data>
+  <data name="ApplyButton" xml:space="preserve">
+    <value>Apply</value>
+  </data>
+  <data name="UndoButton" xml:space="preserve">
+    <value>Undo</value>
+  </data>
+  <data name="BackupHeader" xml:space="preserve">
+    <value>Backup / Restore</value>
+  </data>
+  <data name="BackupButton" xml:space="preserve">
+    <value>Back up current settings</value>
+  </data>
+  <data name="RestoreLatestButton" xml:space="preserve">
+    <value>Restore latest backup</value>
+  </data>
+  <data name="RestoreAnyLabel" xml:space="preserve">
+    <value>Restore a specific backup</value>
+  </data>
+  <data name="RestoreSelectedButton" xml:space="preserve">
+    <value>Restore selected backup</value>
+  </data>
+  <data name="RefreshBackupsButton" xml:space="preserve">
+    <value>Refresh list</value>
+  </data>
+  <data name="BackupHint" xml:space="preserve">
+    <value>A backup is taken automatically when connecting. "Restore latest backup" picks the newest one excluding automatic backups; restoring from the list applies the selected point in time to Live as-is (stored in %LOCALAPPDATA%\FloorLeveler\backups).</value>
+  </data>
+  <data name="BackupKindAuto" xml:space="preserve">
+    <value>Automatic (on connect)</value>
+  </data>
+  <data name="BackupKindPreApply" xml:space="preserve">
+    <value>Before apply</value>
+  </data>
+  <data name="BackupKindManual" xml:space="preserve">
+    <value>Manual</value>
+  </data>
+  <data name="BackupDisplayName" xml:space="preserve">
+    <value>{0}  {1}  #{2}</value>
+    <comment>{0}=日時, {1}=種別, {2}=保存順の連番</comment>
+  </data>
+  <data name="StatusNotConnected" xml:space="preserve">
+    <value>Not connected. Start SteamVR and press Connect.</value>
+  </data>
+  <data name="StatusConnected" xml:space="preserve">
+    <value>Connected to SteamVR.</value>
+  </data>
+  <data name="StatusConnectFailed" xml:space="preserve">
+    <value>Could not connect: {0}</value>
+    <comment>{0}=失敗の詳細</comment>
+  </data>
+  <data name="StatusNativeLibraryMissing" xml:space="preserve">
+    <value>openvr_api.dll was not found. Install SteamVR, or place openvr_api.dll next to FloorLeveler.exe.</value>
+  </data>
+  <data name="StatusManualMode" xml:space="preserve">
+    <value>Manual: record with the Record button or Space.</value>
+  </data>
+  <data name="StatusStillnessMode" xml:space="preserve">
+    <value>Placement: put the device on the floor and hold it still to record automatically.</value>
+  </data>
+  <data name="StatusContinuousMode" xml:space="preserve">
+    <value>Continuous: drag the device along the floor to record automatically.</value>
+  </data>
+  <data name="StatusNoValidPose" xml:space="preserve">
+    <value>Could not get a sample with valid tracking.</value>
+  </data>
+  <data name="StatusSampleRecorded" xml:space="preserve">
+    <value>Sample recorded ({0} total).</value>
+    <comment>{0}=累計点数</comment>
+  </data>
+  <data name="StatusAutoRecorded" xml:space="preserve">
+    <value>Recorded automatically ({0} total).</value>
+    <comment>{0}=累計点数</comment>
+  </data>
+  <data name="StatusPointsCleared" xml:space="preserve">
+    <value>Samples cleared.</value>
+  </data>
+  <data name="StatusPreviewing" xml:space="preserve">
+    <value>Previewing. Press Apply to commit, or Discard preview to cancel.</value>
+  </data>
+  <data name="StatusPreviewFailed" xml:space="preserve">
+    <value>Preview failed: {0}</value>
+    <comment>{0}=失敗の詳細</comment>
+  </data>
+  <data name="StatusPreviewDiscarded" xml:space="preserve">
+    <value>Preview discarded.</value>
+  </data>
+  <data name="StatusBackupBeforeApplyFailed" xml:space="preserve">
+    <value>Backup before applying failed, so the correction was not applied.</value>
+  </data>
+  <data name="StatusApplyFailedReverted" xml:space="preserve">
+    <value>Applying failed, so the change was reverted.</value>
+  </data>
+  <data name="StatusApplied" xml:space="preserve">
+    <value>Correction applied.</value>
+  </data>
+  <data name="StatusApplyFailed" xml:space="preserve">
+    <value>Applying failed: {0}</value>
+    <comment>{0}=失敗の詳細</comment>
+  </data>
+  <data name="StatusUndone" xml:space="preserve">
+    <value>The last correction was undone.</value>
+  </data>
+  <data name="StatusUndoFailed" xml:space="preserve">
+    <value>Undo failed.</value>
+  </data>
+  <data name="StatusUndoFailedWithReason" xml:space="preserve">
+    <value>Undo failed: {0}</value>
+    <comment>{0}=失敗の詳細</comment>
+  </data>
+  <data name="StatusBackupSaved" xml:space="preserve">
+    <value>Backup saved: {0}</value>
+    <comment>{0}=ファイル名</comment>
+  </data>
+  <data name="StatusBackupFailed" xml:space="preserve">
+    <value>Backup failed: {0}</value>
+    <comment>{0}=失敗の詳細</comment>
+  </data>
+  <data name="StatusNoRestorableBackup" xml:space="preserve">
+    <value>There is no backup to restore.</value>
+  </data>
+  <data name="StatusAllRestoresFailed" xml:space="preserve">
+    <value>No usable backup was found (every restore failed).</value>
+  </data>
+  <data name="StatusRestoreFailed" xml:space="preserve">
+    <value>Could not restore the backup: {0}</value>
+    <comment>{0}=バックアップの表示名</comment>
+  </data>
+  <data name="StatusRestored" xml:space="preserve">
+    <value>Backup restored: {0}</value>
+    <comment>{0}=日時</comment>
+  </data>
+  <data name="StatusRestoredWithSkips" xml:space="preserve">
+    <value>Backup restored: {0} ({1} skipped)</value>
+    <comment>{0}=日時, {1}=読み飛ばした件数</comment>
+  </data>
+  <data name="StatusCorrectionUnavailable" xml:space="preserve">
+    <value>The correction cannot be computed.</value>
+  </data>
+  <data name="StatusCorrectionNegligible" xml:space="preserve">
+    <value>No correction needed (rotation under 0.05° and translation under 1 mm).</value>
+  </data>
+  <data name="StatusCorrectionComputeFailed" xml:space="preserve">
+    <value>Could not compute the correction: {0}</value>
+    <comment>{0}=失敗の詳細</comment>
+  </data>
+  <data name="CorrectionSummaryValue" xml:space="preserve">
+    <value>Rotation {0:F2}°, height change {1:F1} mm</value>
+    <comment>{0}=回転角, {1}=高さ変化 (mm)</comment>
+  </data>
+  <data name="CorrectionNeedsConfirmationSuffix" xml:space="preserve">
+    <value> (over 10°: confirmation required before applying)</value>
+    <comment>CorrectionSummaryValue の末尾に連結する</comment>
+  </data>
+  <data name="ErrorInitializationFailed" xml:space="preserve">
+    <value>Could not initialize OpenVR: {0}</value>
+    <comment>{0}=OpenVR のエラー記述 (翻訳できないため原文)</comment>
+  </data>
+  <data name="ErrorInterfaceVersionUnsupported" xml:space="preserve">
+    <value>The SteamVR runtime does not provide interface {0}. Check your SteamVR version against the versions this tool supports.</value>
+    <comment>{0}=インターフェイス名</comment>
+  </data>
+  <data name="ErrorInterfaceUnavailable" xml:space="preserve">
+    <value>Could not obtain the interface: {0}</value>
+    <comment>{0}=インターフェイス名とエラー記述</comment>
+  </data>
+  <data name="ErrorChaperoneReadFailed" xml:space="preserve">
+    <value>Could not read the Chaperone settings: {0}</value>
+    <comment>{0}=呼び出した OpenVR API 名</comment>
+  </data>
+  <data name="PlotNoSamples" xml:space="preserve">
+    <value>No samples</value>
+    <comment>プロットに描くデータが無いときの表示</comment>
+  </data>
+  <data name="PlotAxisX" xml:space="preserve">
+    <value>X (m)</value>
+    <comment>俯瞰ビューの横軸</comment>
+  </data>
+  <data name="PlotAxisZ" xml:space="preserve">
+    <value>Z (m)</value>
+    <comment>俯瞰ビューの縦軸</comment>
+  </data>
+  <data name="PlotAxisTiltDirection" xml:space="preserve">
+    <value>Tilt direction u (m)</value>
+    <comment>側面ビューの横軸</comment>
+  </data>
+  <data name="PlotAxisHeight" xml:space="preserve">
+    <value>Height Y (m)</value>
+    <comment>側面ビューの縦軸</comment>
+  </data>
+</root>
