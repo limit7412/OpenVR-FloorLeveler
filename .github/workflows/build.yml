@@ -1,0 +1,119 @@
+name: Build
+
+# リリース用ビルド (仕様 §8.2 / §8.4)。単一 exe を発行 → サイズ予算の確認 →
+# スモークテストまで行い、成果物としてアップロードする。
+#
+# 呼ばれ方は 2 通り:
+#   - workflow_dispatch — 手動実行。実機確認用の exe を、公開リリースを作らずに得る
+#   - workflow_call     — release.yml から。同じ手順で作った exe を Release へ添付する
+# リリースと手動ビルドで手順が食い違わないよう、発行の実体はここ 1 箇所に置く。
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'exe に埋め込むバージョン (例: 0.1.0)。省略時は 0.0.0'
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      version:
+        description: 'exe に埋め込むバージョン'
+        required: true
+        type: string
+    outputs:
+      artifact:
+        description: '発行した exe を含む成果物の名前'
+        value: ${{ jobs.build.outputs.artifact }}
+
+jobs:
+  build:
+    # win-x64 の exe をその場で起動してスモークテストするため Windows で実行する。
+    runs-on: windows-latest
+    outputs:
+      artifact: ${{ steps.version.outputs.artifact }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          # 手動実行で未指定なら 0.0.0。常に明示的に渡すことで、スモークテストが
+          # 比較する期待値が SDK の既定 (1.0.0) に左右されないようにする。
+          version="${INPUT_VERSION:-0.0.0}"
+          # release.yml と同じ形式のみ受け付ける。手動ビルドだけ緩めると、
+          # 手元では通るのにタグを打つと落ちる、という食い違いが起きる。
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "対応していないバージョン形式です: $version" >&2
+            echo "対応形式: MAJOR.MINOR.PATCH[-プレリリース識別子] (例: 1.2.3, 1.2.3-rc.1)" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "artifact=FloorLeveler-win-x64-$version" >> "$GITHUB_OUTPUT"
+
+      - name: Test
+        run: dotnet test --configuration Release
+
+      - name: Publish single-file exe (win-x64)
+        run: >
+          dotnet publish src/FloorLeveler.App -c Release -r win-x64 --self-contained
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true
+          -p:Version=${{ steps.version.outputs.version }}
+          -o publish
+
+      - name: Check size budget (NF-2, 60MB 以下)
+        shell: bash
+        run: |
+          size=$(stat -c%s publish/FloorLeveler.exe)
+          echo "FloorLeveler.exe: $((size / 1024 / 1024)) MB"
+          test "$size" -le $((60 * 1024 * 1024))
+
+      - name: Smoke test (exe 起動と --version)
+        shell: pwsh
+        env:
+          EXPECTED: ${{ steps.version.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          # (1) exe が起動し --version が正常終了すること。
+          #     WinExe はコンソール非接続だと標準出力が捨てられるため、ファイルへ明示的に
+          #     リダイレクトして確実に取得する (有効なハンドルを継承させる)。
+          $proc = Start-Process -FilePath ./publish/FloorLeveler.exe -ArgumentList '--version' `
+            -NoNewWindow -Wait -PassThru `
+            -RedirectStandardOutput version.out -RedirectStandardError version.err
+          $stderr = (Get-Content version.err -Raw -ErrorAction SilentlyContinue)
+          if ($proc.ExitCode -ne 0) {
+            throw "--version が異常終了しました (exit=$($proc.ExitCode)): $stderr"
+          }
+
+          # (2) --version が実際にバージョンを出力すること (README が保証する挙動)。
+          #     出力が空なら失敗させる。
+          $stdout = (Get-Content version.out -Raw -ErrorAction SilentlyContinue)
+          $stdout = if ($null -eq $stdout) { '' } else { $stdout.Trim() }
+          if (-not $stdout) {
+            throw "--version が何も出力しませんでした (stderr: $stderr)"
+          }
+          if ($stdout -ne $env:EXPECTED) {
+            throw "--version の出力が不一致: expected $env:EXPECTED, got $stdout"
+          }
+
+          # (3) exe のファイルプロパティにもバージョンが埋まっていること (仕様 §8.4)。
+          #     ProductVersion は InformationalVersion 由来。
+          $product = (Get-Item ./publish/FloorLeveler.exe).VersionInfo.ProductVersion.Trim()
+          Write-Host "--version => '$stdout' / ProductVersion = $product"
+          if ($product -ne $env:EXPECTED) {
+            throw "ファイルプロパティのバージョン不一致: expected $env:EXPECTED, got $product"
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.version.outputs.artifact }}
+          path: publish/FloorLeveler.exe
+          if-no-files-found: error
