@@ -1,0 +1,40 @@
+name: Auto Assign
+
+# 作成された issue / PR に担当者を自動で割り当てる。
+# 個人リポジトリで担当者は常に 1 人なので、毎回手で付けるより自動化した方が、
+# 「未アサインのまま埋もれる」ことがなくなる。
+#
+# PR 側は pull_request ではなく pull_request_target を使う。
+# fork からの PR では pull_request のトークンが read-only になり、
+# 割り当て (write) が失敗するため。ここでは PR のコードを一切 checkout せず
+# 番号を読むだけなので、pull_request_target でも fork のコードは実行されない。
+on:
+  issues:
+    types: [opened]
+  pull_request_target:
+    types: [opened]
+
+# issue と PR の割り当てはどちらも issues API を通るが、
+# PR に対しては pull-requests の権限も必要になるため両方を与える。
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+    # 作成時点で既に担当者が指定されている場合は触らない。
+    # 意図して別の人を割り当てたところに、後から owner を足してしまわないようにする。
+    # issue イベントでは github.event.pull_request が、PR イベントでは
+    # github.event.issue が存在しないので、片方の式は常に null になる。
+    if: github.event.issue.assignees[0] == null && github.event.pull_request.assignees[0] == null
+    steps:
+      - name: Assign limit7412
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # issue と PR で番号の在り処が違うので、ここで 1 つに寄せる。
+          NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh api "repos/$REPO/issues/$NUMBER/assignees" \
+            -f "assignees[]=limit7412"
